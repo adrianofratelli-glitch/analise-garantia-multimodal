@@ -16,6 +16,7 @@ para você criar no Atlas (UI ou API). Rode depois do seed.
 Requer rede para Atlas, Voyage e S3 (rode no Codespaces, não no sandbox).
 """
 
+import argparse
 import json
 import os
 import sys
@@ -62,7 +63,36 @@ INDICE_VETOR = {
 }
 
 
+CATEGORIAS_VALIDAS = {"cadeira", "colchao", "guarda_roupa"}
+
+
 def main():
+    parser = argparse.ArgumentParser(description="Popula POC.chamados com os chamados de garantia resolvidos.")
+    parser.add_argument(
+        "categorias",
+        nargs="*",
+        help="categorias a seedar (cadeira colchao guarda_roupa). Vazio = todas.",
+    )
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="apaga a collection antes de seedar (base limpa só com o que for seedado).",
+    )
+    args = parser.parse_args()
+
+    selecionadas = set(args.categorias)
+    invalidas = selecionadas - CATEGORIAS_VALIDAS
+    if invalidas:
+        sys.exit(f"Categoria(s) inválida(s): {', '.join(sorted(invalidas))}. Use: cadeira colchao guarda_roupa")
+
+    itens = [
+        i for i in CHAMADOS_SEED if not selecionadas or categoria_do_sku(i["sku"]) in selecionadas
+    ]
+    if not itens:
+        sys.exit("Nenhum chamado para as categorias informadas.")
+    if selecionadas:
+        print(f"Seedando apenas: {', '.join(sorted(selecionadas))} ({len(itens)} chamados)\n")
+
     uri = os.getenv("MONGODB_URI")
     if not uri:
         sys.exit("MONGODB_URI não definida — copie .env.example para .env e preencha.")
@@ -71,8 +101,12 @@ def main():
     client.admin.command("ping")
     coll = client[DB_NAME][COLLECTION]
 
+    if args.reset:
+        removidos = coll.delete_many({}).deleted_count
+        print(f"  reset: {removidos} documentos removidos\n")
+
     inseridos = 0
-    for item in CHAMADOS_SEED:
+    for item in itens:
         sku = item["sku"]
         categoria = categoria_do_sku(sku)
         checklist = item["checklist"]
