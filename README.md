@@ -1,121 +1,127 @@
-# Análise de Garantia Multimodal — PoV de referência (MongoDB Atlas)
+# Multimodal Warranty Analysis — Reference PoV (MongoDB Atlas)
 
-PoV **vendor-neutra** de **busca multimodal (imagem + texto)** com **MongoDB Atlas
-Vector Search**. Mostra um padrão reaproveitável por qualquer caso de uso que
-combine **foto + texto** para recuperar casos parecidos e apoiar uma decisão:
+> The application UI runs in **Portuguese** (pt-BR) for the demo. This README is
+> in English so the project is easy to browse on GitHub.
 
-> O usuário descreve um problema e envia uma **foto**; a aplicação gera **um único
-> vetor multimodal** (imagem + texto), recupera por **`$vectorSearch`** os
-> **precedentes** mais parecidos — com **filtros nativos** no mesmo passo — e um
-> **modelo de visão** sugere um veredito, **sempre sujeito a revisão humana**.
+A **vendor-neutral** proof-of-value for **multimodal (image + text) search** with
+**MongoDB Atlas Vector Search**. It shows a pattern any use case can reuse when it
+combines a **photo + text** to retrieve similar past cases and support a decision:
 
-O domínio do exemplo é **garantia de móveis** (cadeira / colchão / guarda-roupa),
-mas é só o *dataset*. Troque o catálogo e os dados de seed pelo seu caso
-(sinistros de seguro, inspeção de ativos, controle de qualidade, e-commerce,
-diagnóstico visual, etc.) e o resto continua igual.
+> A user describes a problem and uploads a **photo**; the app builds **a single
+> multimodal vector** (image + text), retrieves the most similar **precedents**
+> via **`$vectorSearch`** — with **native filters** in the same stage — and a
+> **vision LLM** suggests a verdict, always **subject to human review**.
 
-## Por que MongoDB (o diferencial)
+The example domain is **furniture warranty** (chair / mattress / wardrobe), but
+that's just the dataset. Swap the catalog and seed data for your own case
+(insurance claims, asset inspection, quality control, e-commerce, visual
+diagnostics, etc.) and the rest stays the same.
 
-- **Tudo num só documento**: o **vetor**, os **metadados** e as **regras de
-  negócio** (categoria, status) vivem no mesmo documento da collection.
-- **`$vectorSearch` nativo com filtros**: a busca vetorial e os filtros
-  (`categoria`, `status="resolvido"`) rodam **no mesmo passo**, sem sistema de
-  busca à parte e **sem mover dados**.
-- **Operacional + vetorial juntos**: o chamado em análise é gravado e, após a
-  revisão humana, vira precedente para as próximas buscas — no mesmo cluster.
+## Why MongoDB (the differentiator)
 
-## Componentes pluggáveis (implementação de referência)
+- **Everything in one document**: the **vector**, the **metadata** and the
+  **business rules** (category, status) live in the same collection document.
+- **Native `$vectorSearch` with filters**: vector search and the filters
+  (category, `status="resolvido"`) run **in the same stage**, with no separate
+  search system and **without moving data**.
+- **Operational + vector together**: the in-review case is stored and, after
+  human review, becomes a precedent for future searches — in the same cluster.
 
-A PoV é **agnóstica** a LLM, modelo de embedding e object storage. A
-implementação de referência usa os provedores abaixo — **troque pelo que preferir**:
+## Pluggable components (reference implementation)
 
-| Papel | Função no fluxo | Referência usada |
+The PoV is **agnostic** to the LLM, the embedding model and the object store.
+The reference implementation uses concrete providers (visible in
+`backend/requirements.txt`) — **swap them for your own**:
+
+| Role | Function in the flow | Configurable in |
 | --- | --- | --- |
-| **Embedding multimodal** | 1 vetor de 1024 dims a partir de imagem + texto | Voyage `voyage-multimodal-3` |
-| **LLM de visão** | veredito a partir da foto + frase + precedentes | Anthropic `claude-sonnet-4-6` |
-| **Object storage** | guarda o binário da imagem (o Mongo guarda só a URI + vetor) | Amazon S3 |
+| **Multimodal embedding** | 1 vector of 1024 dims from image + text | `backend/voyage.py` |
+| **Vision LLM** | verdict from photo + text + precedents | `backend/llm.py` (`MODEL`) |
+| **Object storage** | holds the image binary (Mongo keeps only the URI + vector) — **optional** | `backend/s3.py` |
 
-> Importante: o embedding é multimodal e calculado pela **aplicação** (mesmo
-> vetor no seed e no runtime) — **não** usamos auto-embedding text-only.
-> DB `POC`, collection `chamados`, índice de vetor `chamados_vector`
-> (1024 dims, cosine).
+> The embedding is multimodal and computed by the **application** (same vector at
+> seed and runtime) — we do **not** use text-only auto-embedding.
+> DB `POC`, collection `chamados`, vector index `chamados_vector` (1024 dims, cosine).
 
-## Arquitetura
+## Architecture
 
 ```
-descrever problema → selecionar produto → checklist + relato → foto
-   │
-   ├─ compor_frase()                 (mesma função no seed e no runtime → vetores comparáveis)
-   ├─ persistir imagem (object storage)   (Mongo guarda só a URI + metadados + vetor)
-   ├─ embed multimodal (imagem + texto)   (1024 dims, input_type="query")
-   ├─ $vectorSearch nativo                 filtro {categoria, status:"resolvido"}
-   ├─ veredito do modelo de visão          {classificacao, confianca, justificativa, recomendacao}
-   └─ grava chamado status="em_analise"   → revisão humana → status="resolvido"
+order -> product -> checklist + report -> photo
+   |
+   |- compor_frase()                   (same function at seed and runtime -> comparable vectors)
+   |- persist image (object storage)   (Mongo keeps only the URI + metadata + vector; optional)
+   |- multimodal embedding (image + text)  (1024 dims, input_type="query")
+   |- native $vectorSearch                  filter {categoria, status:"resolvido"}
+   |- vision LLM verdict                     {classificacao, confianca, justificativa, recomendacao}
+   |- store case status="em_analise"   -> human review -> status="resolvido"
 ```
 
-## Estrutura
+## Layout
 
 ```
 backend/
-  defeitos_catalog.py   catálogo de exemplo + compor_frase() + derivar_tipo_defeito()
-  seed_data.py          chamados de exemplo (seed) + pedidos de exemplo
-  voyage.py             embedding multimodal (imagem + texto)
-  s3.py                 object storage → URI + presigned URL
-  db.py                 get_db()/get_collection() + safe_query/SafeQueryError
-  rag.py                vector_search(query_vector, categoria) → (docs, funnel)
-  llm.py                analisar_veredito() — LLM de visão + saída estruturada
-  seed.py               popula a collection e IMPRIME o JSON do índice de vetor
-  main.py               FastAPI (/api/health, /pedidos, /lookup, /checklist, /analisar, /revisar)
-frontend/               React + Vite + LeafyGreen (PT-BR)
-seed_images/            imagens de exemplo (placeholders) + gen_placeholders.py
+  defeitos_catalog.py  example catalog + compor_frase() + derivar_tipo_defeito()
+  seed_data.py         example cases (seed) + example orders
+  voyage.py            multimodal embedding (image + text)
+  s3.py                object storage -> URI + presigned URL (optional)
+  db.py                get_db()/get_collection() + safe_query/SafeQueryError
+  rag.py               vector_search(query_vector, categoria) -> (docs, funnel)
+  llm.py               analisar_veredito() — vision LLM + structured output
+  seed.py              populates the collection and PRINTS the vector index JSON
+  main.py              FastAPI (/api/health, /pedidos, /lookup, /checklist, /analisar, /revisar)
+frontend/              React + Vite + LeafyGreen (UI in pt-BR)
+seed_images/           example images (placeholders) + gen_placeholders.py
 ```
 
-## Variáveis de ambiente (`.env`)
+## Environment variables (`.env`)
 
-Copie `.env.example` para `.env` e preencha (nomes da implementação de referência):
+Copy `.env.example` to `.env` and fill it in:
 
-| Variável | Para quê |
+| Variable | Purpose |
 | --- | --- |
-| `MONGODB_URI` | cluster Atlas (DB `POC`) |
-| `ANTHROPIC_API_KEY` | LLM de visão |
-| `VOYAGE_API_KEY` | embedding multimodal |
-| `S3_BUCKET` / `AWS_REGION` | object storage das imagens |
+| `MONGODB_URI` | Atlas cluster (DB `POC`) |
+| `ANTHROPIC_API_KEY` | vision LLM |
+| `VOYAGE_API_KEY` | multimodal embedding |
+| `S3_BUCKET` / `AWS_REGION` | object storage for the images (optional) |
 
-Credenciais AWS via ambiente padrão do boto3 (`AWS_ACCESS_KEY_ID` /
-`AWS_SECRET_ACCESS_KEY`, e `AWS_SESSION_TOKEN` se forem temporárias).
+AWS credentials via the standard boto3 environment (`AWS_ACCESS_KEY_ID` /
+`AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN` for temporary credentials).
+Object storage is optional: leave `S3_BUCKET` unset and the analysis still runs
+(the image is returned inline and `$vectorSearch` works normally).
 
-## Executar no GitHub Codespaces
+## Run on GitHub Codespaces
 
-> Requer rede para o cluster Atlas e para os provedores de LLM/embedding/storage.
+> Requires network access to the Atlas cluster and the LLM/embedding providers.
 
-1. **Configurar `.env`**
+1. **Configure `.env`**
    ```bash
-   cp .env.example .env   # preencha as variáveis acima
+   cp .env.example .env   # fill in the variables above
    ```
-2. **Backend — deps**
+2. **Backend — install deps**
    ```bash
    python -m venv backend/.venv
    backend/.venv/bin/pip install -r backend/requirements.txt
    ```
-3. **Frontend — deps**
+3. **Frontend — install deps**
    ```bash
    cd frontend && npm install && cd ..
    ```
-4. **(opcional) Trocar as imagens de exemplo** — substitua os arquivos em
-   `seed_images/` (mesmos nomes-base `cad_01`, `col_01`, `gr_01`, …; aceita
-   `.jpg`/`.jpeg`/`.png`). Para regerar os placeholders:
+4. **(optional) Replace the example images** — swap the files in `seed_images/`
+   (same base names `cad_01`, `col_01`, `gr_01`, …; `.jpg`/`.jpeg`/`.png`
+   accepted). To regenerate placeholders:
    `backend/.venv/bin/python seed_images/gen_placeholders.py`
-5. **Seed** — popula a collection (sobe imagens, gera embeddings) e **imprime o
-   JSON do índice de vetor**. Dá para seedar tudo ou só uma categoria:
+5. **Seed** — populates the collection (uploads images, generates embeddings)
+   and **prints the vector index JSON**. Seed everything or just one category
+   (`cadeira`, `colchao`, `guarda_roupa`):
    ```bash
    cd backend
-   ../backend/.venv/bin/python seed.py                 # todas as categorias
-   ../backend/.venv/bin/python seed.py --reset cadeira # só uma categoria, base limpa
+   ../backend/.venv/bin/python seed.py                  # all categories
+   ../backend/.venv/bin/python seed.py --reset cadeira  # one category, clean base
    cd ..
    ```
-6. **Criar o índice de vetor no Atlas** (`POC.chamados`, nome `chamados_vector`).
-   Atlas → *Atlas Search* → *Create Search Index* → *JSON Editor* — cole o bloco
-   `definition` impresso pelo seed:
+6. **Create the vector index in Atlas** (`POC.chamados`, name `chamados_vector`).
+   Atlas -> *Atlas Search* -> *Create Search Index* -> *JSON Editor* — paste the
+   `definition` block printed by the seed:
    ```json
    {
      "fields": [
@@ -125,45 +131,45 @@ Credenciais AWS via ambiente padrão do boto3 (`AWS_ACCESS_KEY_ID` /
      ]
    }
    ```
-7. **Subir backend (porta 8000)**
+7. **Start the backend (port 8000)**
    ```bash
    cd backend && ../backend/.venv/bin/uvicorn main:app --port 8000
    ```
-8. **Subir frontend (porta 5173)** — em outro terminal
+8. **Start the frontend (port 5173)** — in another terminal
    ```bash
    cd frontend && npm run dev
    ```
-   O Vite faz proxy de `/api` → `http://localhost:8000`. Abra a porta 5173 e
-   siga o fluxo: selecionar pedido → produto → checklist + relato → foto → veredito.
+   Vite proxies `/api` -> `http://localhost:8000`. Open port 5173 and follow the
+   flow: select order -> product -> checklist + report -> photo -> verdict.
 
-> Atalho dev: `./start.sh` sobe os dois (espera o venv em `backend/.venv`).
+> Dev shortcut: `./start.sh` starts both (expects the venv at `backend/.venv`).
 
-## Docker (opcional)
+## Docker (optional)
 
-Imagem única (nginx serve o build do front e faz proxy de `/api` pro uvicorn):
+Single image (nginx serves the frontend build and proxies `/api` to uvicorn):
 ```bash
-docker build -t analise-garantia-multimodal .
-docker run --rm -p 8080:8080 --env-file .env analise-garantia-multimodal
-# abra http://localhost:8080
+docker build -t warranty-analysis .
+docker run --rm -p 8080:8080 --env-file .env warranty-analysis
+# open http://localhost:8080
 ```
 
 ## Endpoints
 
-| Método | Rota | Descrição |
+| Method | Route | Description |
 | --- | --- | --- |
-| GET | `/api/health` | ping do Atlas + contagens |
-| GET | `/api/pedidos` | lista de pedidos (seleção no front) |
-| POST | `/api/lookup` | `{numero_pedido}` → produtos do pedido |
-| GET | `/api/checklist/{categoria}` | itens de checklist da categoria |
-| POST | `/api/analisar` | multipart (foto + dados) → veredito + precedentes + funil |
-| POST | `/api/revisar` | `{numero_chamado, resolucao_final}` → `resolvido` |
+| GET | `/api/health` | Atlas ping + counts |
+| GET | `/api/pedidos` | list of orders (for selection in the UI) |
+| POST | `/api/lookup` | `{numero_pedido}` -> products of the order |
+| GET | `/api/checklist/{categoria}` | checklist items for the category |
+| POST | `/api/analisar` | multipart (photo + data) -> verdict + precedents + funnel |
+| POST | `/api/revisar` | `{numero_chamado, resolucao_final}` -> `resolvido` |
 
-## Notas
+## Notes
 
-- A **frase** que vira embedding é produzida por `compor_frase()` — a mesma
-  função no seed e no runtime, garantindo vetores comparáveis.
-- O veredito do modelo é **sugestão** e passa por **revisão humana** antes de o
-  chamado virar `resolvido`.
-- As imagens em `seed_images/` são **placeholders**. Para uma demo realista,
-  troque por fotos reais (mesmos nomes-base). Fotos reais não são versionadas
-  (veja `.gitignore`).
+- The text that becomes the embedding is produced by `compor_frase()` — the same
+  function at seed and runtime, guaranteeing comparable vectors.
+- The LLM verdict is a **suggestion** and goes through **human review** before
+  the case becomes `resolvido`.
+- The images in `seed_images/` are **placeholders**. For a realistic demo, swap
+  them for real photos (same base names). Real photos are not versioned (see
+  `.gitignore`).
