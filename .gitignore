@@ -10,5 +10,9 @@ __pycache__/
 node_modules/
 dist/
 
+# fotos reais dos chamados — não versionar (os placeholders .png ficam no repo)
+seed_images/*.jpg
+seed_images/*.jpeg
+
 # misc
 .DS_Store
