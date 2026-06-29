@@ -260,7 +260,7 @@ export default function App() {
       </nav>
 
       <main className="content">
-        <div className="hero-kicker">PoV de referência · Multimodal Vector Search
+        <div className="hero-kicker">PoV de referência · Multimodal Vector Search</div>
         <h1 className="page-title">
           Garantia analisada com <span>foto + precedentes</span>
         </h1>
