@@ -15,6 +15,7 @@ Endpoints (sob /api, proxied pelo nginx/vite):
 Erros operacionais sobem como SafeQueryError -> 503 {error:{kind,message}} -> Banner.
 """
 
+import base64
 import io
 from datetime import datetime, timezone
 
@@ -28,7 +29,7 @@ from pydantic import BaseModel
 import rag
 import s3
 import voyage
-from db import MAX_TIME_MS, get_client, get_collection, safe_query
+from db import MAX_TIME_MS, VECTOR_INDEX, get_client, get_collection, safe_query
 from defeitos_catalog import (
     CATALOGO_DEFEITOS,
     PRODUTOS,
@@ -83,8 +84,21 @@ async def health():
     return {
         "ping": "ok",
         "counts": {"chamados": total, "resolvidos": resolvidos},
-        "modelo": "claude-opus-4-8",
-        "embedding": f"{voyage.MODEL} ({voyage.EMBED_DIMS}d)",
+        "vector_index": VECTOR_INDEX,
+        "dims": voyage.EMBED_DIMS,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Lista de pedidos (para seleção no front — sem digitação)
+# --------------------------------------------------------------------------- #
+@app.get("/api/pedidos")
+async def pedidos():
+    return {
+        "pedidos": [
+            {"numero_pedido": p["numero_pedido"], "cliente": p["cliente"], "data": p["data"]}
+            for p in PEDIDOS_MOCK
+        ]
     }
 
 
@@ -164,8 +178,10 @@ async def analisar(
     # 1. frase de análise (mesma função do seed -> embeddings comparáveis)
     frase = compor_frase(sku, checklist, descricao)
 
-    # 2. sobe a foto pro S3 (guarda só a URI no Mongo)
+    # 2. persiste a foto no object storage (o Mongo guarda só a URI + metadados)
     up = s3.upload_bytes(imagem_bytes, imagem.filename or "upload.png", prefixo="chamados")
+    # devolve a imagem ao front como data-URI (não expõe a URL/origem do storage)
+    imagem_data_uri = f"data:{media_type};base64,{base64.standard_b64encode(imagem_bytes).decode()}"
 
     # 3. embedding multimodal da QUERY (texto + imagem), input_type="query"
     pil = Image.open(io.BytesIO(imagem_bytes)).convert("RGB")
@@ -204,7 +220,7 @@ async def analisar(
             "numero_chamado": numero_chamado,
             "categoria": categoria,
             "frase_analise": frase,
-            "imagem_url": up["url"],
+            "imagem_url": imagem_data_uri,
             "veredito": veredito,
             "precedentes": precedentes,
             "funnel": funnel,

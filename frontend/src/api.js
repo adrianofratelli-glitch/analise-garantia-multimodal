@@ -29,6 +29,8 @@ async function request(path, options = {}) {
 export const api = {
   health: () => request('/api/health'),
 
+  pedidos: () => request('/api/pedidos'),
+
   lookup: (numero_pedido) =>
     request('/api/lookup', { method: 'POST', body: JSON.stringify({ numero_pedido }) }),
 

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import Badge from '@leafygreen-ui/badge';
 import Banner from '@leafygreen-ui/banner';
 import Button from '@leafygreen-ui/button';
-import TextInput from '@leafygreen-ui/text-input';
 import { api } from './api.js';
 import PipelineSteps from './components/PipelineSteps.jsx';
 import JsonViewer from './components/JsonViewer.jsx';
@@ -14,11 +13,11 @@ const STEPS = ['Pedido', 'Produto', 'Checklist & Relato', 'Foto', 'Resultado'];
 // As 6 etapas do pipeline server-side (mesma narrativa do /analisar).
 const PIPELINE = [
   { key: 'frase', title: 'Compor frase de análise' },
-  { key: 's3', title: 'Subir foto pro S3' },
-  { key: 'embed', title: 'Embedding multimodal (Voyage)' },
-  { key: 'search', title: '$vectorSearch no Atlas' },
-  { key: 'claude', title: 'Veredito do Claude (visão)' },
-  { key: 'gravar', title: 'Gravar chamado (em_analise)' },
+  { key: 's3', title: 'Persistir imagem (object storage)' },
+  { key: 'embed', title: 'Embedding multimodal' },
+  { key: 'search', title: '$vectorSearch nativo no MongoDB Atlas' },
+  { key: 'modelo', title: 'Veredito do modelo de visão' },
+  { key: 'gravar', title: 'Gravar chamado no MongoDB' },
 ];
 
 const CATEGORIA_LABEL = {
@@ -37,7 +36,7 @@ export default function App() {
   const [healthError, setHealthError] = useState(false);
 
   // etapa 1 — pedido
-  const [numeroPedido, setNumeroPedido] = useState('');
+  const [pedidos, setPedidos] = useState([]);
   const [pedido, setPedido] = useState(null);
 
   // etapa 2 — produto
@@ -82,6 +81,11 @@ export default function App() {
     };
   }, []);
 
+  // carrega a lista de pedidos para a seleção clicável
+  useEffect(() => {
+    api.pedidos().then((d) => setPedidos(d.pedidos)).catch(() => {});
+  }, []);
+
   function initPipe(status) {
     return PIPELINE.map((p, i) => ({ ...p, index: i + 1, status }));
   }
@@ -89,7 +93,6 @@ export default function App() {
   function reset() {
     clearTimeout(pipeTimer.current);
     setStep(0);
-    setNumeroPedido('');
     setPedido(null);
     setProduto(null);
     setChecklistItens([]);
@@ -105,12 +108,11 @@ export default function App() {
   }
 
   // ---- etapa 1 ----
-  const buscarPedido = async () => {
-    if (!numeroPedido.trim()) return;
+  const escolherPedido = async (numero) => {
     setBusy(true);
     setError(null);
     try {
-      const p = await api.lookup(numeroPedido.trim());
+      const p = await api.lookup(numero);
       setPedido(p);
       setStep(1);
     } catch (e) {
@@ -196,15 +198,15 @@ export default function App() {
     const f = r.funnel || {};
     const content = {
       frase: <span className="dim mono small">{r.frase_analise}</span>,
-      s3: <span className="dim mono small">imagem enviada ao S3</span>,
-      embed: <span className="dim mono small">vetor 1024-d (input_type=query)</span>,
+      s3: <span className="dim mono small">imagem persistida no object storage</span>,
+      embed: <span className="dim mono small">vetor multimodal 1024-d gerado</span>,
       search: (
         <span className="dim mono small">
           {f.recuperados}/{f.limit} precedentes · {f.num_candidates} candidatos · melhor score{' '}
           {f.melhor_score ?? '—'}
         </span>
       ),
-      claude: (
+      modelo: (
         <span className="dim mono small">
           {r.veredito?.classificacao} · {Math.round((r.veredito?.confianca ?? 0) * 100)}%
         </span>
@@ -263,9 +265,10 @@ export default function App() {
           Garantia analisada com <span>foto + precedentes</span>
         </h1>
         <p className="page-subtitle">
-          Embedding multimodal (Voyage) + $vectorSearch no MongoDB Atlas + visão do Claude.
-          A foto e a frase do chamado recuperam casos resolvidos parecidos; o veredito é
-          uma sugestão sujeita a revisão humana.
+          <strong>$vectorSearch nativo do MongoDB Atlas</strong>: vetor, metadados e regras de
+          negócio (categoria, status) vivem no <strong>mesmo documento</strong>. A foto e a frase
+          do chamado recuperam casos resolvidos parecidos — com filtros nativos, sem mover dados
+          para outro sistema. O veredito é uma sugestão sujeita a revisão humana.
         </p>
 
         {error && (
@@ -276,29 +279,26 @@ export default function App() {
 
         <div className="spacer" />
 
-        {/* ETAPA 1 — PEDIDO */}
+        {/* ETAPA 1 — PEDIDO (seleção clicável, sem digitação) */}
         {step === 0 && (
           <div className="card fade-in">
             <div className="card-header">
-              <span className="card-title">1 · Informe o número do pedido</span>
+              <span className="card-title">1 · Selecione o pedido</span>
             </div>
-            <div className="row">
-              <div style={{ flex: 1, minWidth: 240 }}>
-                <TextInput
-                  darkMode
-                  aria-label="número do pedido"
-                  placeholder="ex.: MM-100234"
-                  value={numeroPedido}
-                  onChange={(e) => setNumeroPedido(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && buscarPedido()}
-                />
-              </div>
-              <Button darkMode variant="primary" onClick={buscarPedido} disabled={busy}>
-                {busy ? 'Buscando…' : 'Buscar pedido'}
-              </Button>
-            </div>
-            <div className="dim small" style={{ marginTop: 10 }}>
-              Pedidos de exemplo: MM-100234, MM-100871, MM-101502, MM-101990
+            <div className="produtos-grid">
+              {pedidos.map((p) => (
+                <button
+                  key={p.numero_pedido}
+                  className="produto-card"
+                  onClick={() => escolherPedido(p.numero_pedido)}
+                  disabled={busy}
+                >
+                  <div className="produto-nome">{p.numero_pedido}</div>
+                  <div className="dim small">{p.cliente}</div>
+                  <div className="dim small">{p.data}</div>
+                </button>
+              ))}
+              {pedidos.length === 0 && <div className="dim">Carregando pedidos…</div>}
             </div>
           </div>
         )}
@@ -475,7 +475,7 @@ export default function App() {
       </main>
 
       <footer className="app-footer">
-        <p>MongoDB Atlas · POC.chamados — voyage-multimodal-3 (1024d) · $vectorSearch + Claude opus-4-8</p>
+        <p>MongoDB Atlas · POC.chamados — $vectorSearch (1024 dims, cosine) · vetor + metadados + filtros no mesmo documento</p>
       </footer>
     </>
   );

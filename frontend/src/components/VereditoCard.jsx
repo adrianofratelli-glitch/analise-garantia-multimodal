@@ -48,8 +48,7 @@ export default function VereditoCard({ veredito }) {
       </div>
 
       <div className="aviso-revisao">
-        ⚠️ Sugestão gerada por IA ({veredito.modelo || 'claude-opus-4-8'}) —
-        sujeita a revisão humana antes de qualquer decisão.
+        ⚠️ Sugestão gerada automaticamente — sujeita a revisão humana antes de qualquer decisão.
       </div>
     </div>
   );

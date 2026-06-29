@@ -117,5 +117,4 @@ async def analisar_veredito(
     # Com output_config.format, o primeiro bloco de texto é JSON válido.
     texto = next((b.text for b in resp.content if b.type == "text"), "")
     veredito = json.loads(texto)
-    veredito["modelo"] = resp.model
     return veredito

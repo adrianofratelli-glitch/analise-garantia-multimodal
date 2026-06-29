@@ -38,7 +38,8 @@ async def vector_search(query_vector: list[float], categoria: str) -> tuple[list
         {"$addFields": {"score": {"$meta": "vectorSearchScore"}}},
         {
             "$project": {
-                "embedding": 0,  # não devolve o vetor (1024 floats) pro frontend
+                "embedding": 0,    # não devolve o vetor (1024 floats) pro frontend
+                "imagem_uri": 0,   # não expõe a URI/origem do object storage
             }
         },
     ]
