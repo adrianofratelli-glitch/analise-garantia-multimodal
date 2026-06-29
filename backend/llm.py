@@ -4,7 +4,7 @@ analisar_veredito() recebe a foto do produto (vision), a frase de análise e os
 precedentes recuperados pelo $vectorSearch, e devolve um veredito estruturado:
 classificacao, confianca (0-1), justificativa, recomendacao.
 
-Usamos o SDK `anthropic` (ANTHROPIC_API_KEY), modelo claude-opus-4-8, com
+Usamos o SDK `anthropic` (ANTHROPIC_API_KEY), modelo claude-sonnet-4-6, com
 thinking adaptativo e structured outputs (output_config.format) — o primeiro
 bloco de texto da resposta é JSON válido contra o schema abaixo.
 """
@@ -14,7 +14,7 @@ import json
 
 from anthropic import AsyncAnthropic
 
-MODEL = "claude-opus-4-8"
+MODEL = "claude-sonnet-4-6"
 
 client = AsyncAnthropic()  # lê ANTHROPIC_API_KEY do ambiente
 

@@ -32,7 +32,7 @@ implementação de referência usa os provedores abaixo — **troque pelo que pr
 | Papel | Função no fluxo | Referência usada |
 | --- | --- | --- |
 | **Embedding multimodal** | 1 vetor de 1024 dims a partir de imagem + texto | Voyage `voyage-multimodal-3` |
-| **LLM de visão** | veredito a partir da foto + frase + precedentes | Anthropic `claude-opus-4-8` |
+| **LLM de visão** | veredito a partir da foto + frase + precedentes | Anthropic `claude-sonnet-4-6` |
 | **Object storage** | guarda o binário da imagem (o Mongo guarda só a URI + vetor) | Amazon S3 |
 
 > Importante: o embedding é multimodal e calculado pela **aplicação** (mesmo
