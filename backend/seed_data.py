@@ -1,5 +1,5 @@
 """
-Dados de seed da PoV "MM Análise de Garantia" (MadeiraMadeira).
+Dados de seed da PoV "Análise de Garantia Multimodal" (dataset de exemplo).
 
   - CHAMADOS_SEED : 15 chamados de garantia já resolvidos (5 por categoria),
     cada um casado com uma imagem em seed_images/.
@@ -20,25 +20,25 @@ compor_frase(), sobe a imagem pro S3, gera o embedding multimodal
 # --------------------------------------------------------------------------- #
 PEDIDOS_MOCK = [
     {
-        "numero_pedido": "MM-100234",
+        "numero_pedido": "PED-100234",
         "cliente": "Joana Ribeiro",
         "data": "2026-05-12",
         "itens": ["CAD-OFF-PRO", "GR-3PORTAS"],
     },
     {
-        "numero_pedido": "MM-100871",
+        "numero_pedido": "PED-100871",
         "cliente": "Marcos Tavares",
         "data": "2026-05-28",
         "itens": ["COL-MOLAS-Q", "COL-ESPUMA-S"],
     },
     {
-        "numero_pedido": "MM-101502",
+        "numero_pedido": "PED-101502",
         "cliente": "Lúcia Andrade",
         "data": "2026-06-03",
         "itens": ["CAD-GAMER-X"],
     },
     {
-        "numero_pedido": "MM-101990",
+        "numero_pedido": "PED-101990",
         "cliente": "Rafael Pimentel",
         "data": "2026-06-19",
         "itens": ["GR-6PORTAS", "CAD-OFF-PRO"],

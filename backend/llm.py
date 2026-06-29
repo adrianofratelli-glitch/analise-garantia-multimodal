@@ -46,7 +46,7 @@ VEREDITO_SCHEMA = {
 }
 
 SYSTEM = (
-    "Você é um analista de garantia da MadeiraMadeira (móveis e colchões). "
+    "Você é um analista de garantia de um varejista de móveis e colchões. "
     "Avalia chamados de garantia olhando a FOTO do produto, a descrição do "
     "cliente e PRECEDENTES de chamados já resolvidos (recuperados por similaridade). "
     "Classifique o defeito como 'procedente' (defeito de fábrica coberto), "

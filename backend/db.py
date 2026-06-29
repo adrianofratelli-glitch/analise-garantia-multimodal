@@ -44,7 +44,7 @@ def get_client() -> AsyncIOMotorClient:
             uri,
             serverSelectionTimeoutMS=MAX_TIME_MS,
             connectTimeoutMS=MAX_TIME_MS,
-            appname="mm-analise-garantia-pov",
+            appname="analise-garantia-multimodal-pov",
         )
     return _client
 

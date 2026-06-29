@@ -1,4 +1,7 @@
-"""FastAPI — MM Análise de Garantia (MadeiraMadeira) PoV.
+"""FastAPI — Análise de Garantia Multimodal (PoV de referência).
+
+PoV vendor-neutra de busca multimodal (imagem + texto) no MongoDB Atlas.
+O domínio (garantia de móveis) é só o dataset de exemplo — troque pelo seu caso.
 
 Fluxo do analista:
   pedido -> produto -> checklist+descrição -> upload da foto -> veredito.
@@ -41,7 +44,7 @@ from defeitos_catalog import (
 from llm import analisar_veredito
 from seed_data import PEDIDOS_MOCK
 
-app = FastAPI(title="MM Análise de Garantia")
+app = FastAPI(title="Análise de Garantia Multimodal")
 
 app.add_middleware(
     CORSMiddleware,

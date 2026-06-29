@@ -1,5 +1,8 @@
 """
-Catálogo de defeitos da PoV "MM Análise de Garantia" (MadeiraMadeira).
+Catálogo de defeitos da PoV "Análise de Garantia Multimodal".
+
+Dataset de exemplo (garantia de móveis) de uma PoV vendor-neutra de busca
+multimodal no MongoDB Atlas — troque o catálogo pelo domínio do seu caso.
 
 Fonte única da verdade para:
   - PRODUTOS / SKUs e suas categorias

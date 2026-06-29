@@ -238,7 +238,7 @@ export default function App() {
       <nav className="top-nav">
         <div className="nav-inner">
           <span className="nav-logo">
-            <span className="leaf">●</span> MM Análise de Garantia
+            <span className="leaf">●</span> Análise de Garantia Multimodal
           </span>
           <div className="nav-pills">
             {STEPS.map((name, i) => (
@@ -260,7 +260,7 @@ export default function App() {
       </nav>
 
       <main className="content">
-        <div className="hero-kicker">PoV · MadeiraMadeira</div>
+        <div className="hero-kicker">PoV de referência · Multimodal Vector Search
         <h1 className="page-title">
           Garantia analisada com <span>foto + precedentes</span>
         </h1>
