@@ -93,6 +93,24 @@ Object storage is optional: leave `S3_BUCKET` unset and the analysis still runs
 
 > Requires network access to the Atlas cluster and the LLM/embedding providers.
 
+### One command
+
+After filling in `.env`, a single idempotent script prepares whatever is missing
+(venv, deps) and starts both servers:
+
+```bash
+./run.sh --seed   # first run: also seeds POC.chamados and prints the vector-index JSON
+./run.sh          # subsequent runs: just starts backend (:8000) + frontend (:5173)
+```
+
+On the first `--seed` run, create the `chamados_vector` index in Atlas with the
+JSON the seed prints (one time only — the index persists in Atlas). Then open
+port 5173.
+
+The detailed, step-by-step version is below.
+
+### Step by step
+
 1. **Configure `.env`**
    ```bash
    cp .env.example .env   # fill in the variables above
@@ -142,7 +160,8 @@ Object storage is optional: leave `S3_BUCKET` unset and the analysis still runs
    Vite proxies `/api` -> `http://localhost:8000`. Open port 5173 and follow the
    flow: select order -> product -> checklist + report -> photo -> verdict.
 
-> Dev shortcut: `./start.sh` starts both (expects the venv at `backend/.venv`).
+> Dev shortcut: `./run.sh` does all of the above in one command (see *One command*
+> at the top of this section). `./start.sh` only starts the two servers.
 
 ## Docker (optional)
 
