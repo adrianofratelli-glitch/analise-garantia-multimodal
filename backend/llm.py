@@ -38,7 +38,9 @@ VEREDITO_SCHEMA = {
         },
         "recomendacao": {
             "type": "string",
-            "description": "Próxima ação sugerida ao analista (ex.: aprovar troca, recusar, pedir nova foto).",
+            "description": "Próxima ação sugerida ao analista, respondendo ao que o cliente "
+            "pediu no relato quando houver (ex.: aprovar reembolso, oferecer troca, recusar, "
+            "pedir nova foto).",
         },
     },
     "required": ["classificacao", "confianca", "justificativa", "recomendacao"],
@@ -47,12 +49,15 @@ VEREDITO_SCHEMA = {
 
 SYSTEM = (
     "Você é um analista de garantia de um varejista de móveis e colchões. "
-    "Avalia chamados de garantia olhando a FOTO do produto, a descrição do "
-    "cliente e PRECEDENTES de chamados já resolvidos (recuperados por similaridade). "
+    "Avalia chamados de garantia cruzando TRÊS fontes: a FOTO do produto, o "
+    "RELATO DO CLIENTE (texto livre, com os defeitos apontados e o que ele pede) "
+    "e os PRECEDENTES de chamados já resolvidos (recuperados por similaridade). "
     "Classifique o defeito como 'procedente' (defeito de fábrica coberto), "
     "'improcedente' (mau uso ou dano externo) ou 'inconclusivo' (a imagem não "
-    "permite decidir). Baseie-se no que a imagem realmente mostra; use os "
-    "precedentes como apoio, não como regra absoluta. Seja objetivo: este "
+    "permite decidir). Baseie a CLASSIFICAÇÃO no que a imagem realmente mostra; "
+    "use os precedentes como apoio, não como regra absoluta. Leve o relato do "
+    "cliente em conta para entender o contexto e o que ele pede (ex.: troca, "
+    "reembolso) e responda a esse pedido na RECOMENDAÇÃO. Seja objetivo: este "
     "veredito é uma sugestão sujeita a revisão humana."
 )
 
@@ -77,6 +82,7 @@ async def analisar_veredito(
     media_type: str,
     frase_analise: str,
     precedentes: list[dict],
+    descricao: str = "",
 ) -> dict:
     """Chama o Claude com a imagem (visão) + frase + precedentes.
 
@@ -98,9 +104,11 @@ async def analisar_veredito(
             "type": "text",
             "text": (
                 f"CHAMADO ATUAL:\n{frase_analise}\n\n"
+                f"RELATO DO CLIENTE (texto livre — considere o que ele descreve e o que pede):\n"
+                f"\"{(descricao or '').strip() or '(sem relato adicional)'}\"\n\n"
                 f"PRECEDENTES RECUPERADOS (chamados resolvidos, por similaridade):\n"
                 f"{_precedentes_texto(precedentes)}\n\n"
-                "Analise a foto e emita o veredito estruturado."
+                "Analise a foto, cruze com o relato e os precedentes, e emita o veredito estruturado."
             ),
         },
     ]

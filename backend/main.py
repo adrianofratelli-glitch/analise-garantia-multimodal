@@ -193,8 +193,8 @@ async def analisar(
     # 4. $vectorSearch -> precedentes resolvidos da mesma categoria
     precedentes, funnel = await rag.vector_search(query_vector, categoria)
 
-    # 5. Claude (visão) emite o veredito com base na foto + frase + precedentes
-    veredito = await analisar_veredito(imagem_bytes, media_type, frase, precedentes)
+    # 5. Claude (visão) emite o veredito com base na foto + frase + relato + precedentes
+    veredito = await analisar_veredito(imagem_bytes, media_type, frase, precedentes, descricao)
 
     # 6. grava o chamado em análise (já com embedding, para virar precedente após revisão)
     now = datetime.now(timezone.utc)
