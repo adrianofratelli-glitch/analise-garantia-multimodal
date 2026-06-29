@@ -143,7 +143,7 @@ def main():
             )
         imagem = Image.open(caminho).convert("RGB")
         with open(caminho, "rb") as fh:
-            up = s3.upload_bytes(fh.read(), caminho.name, prefixo="seed")
+            imagem_uri = s3.try_upload(fh.read(), caminho.name, prefixo="seed")
 
         # 3. embedding multimodal (texto + imagem), input_type="document"
         embedding = voyage.embed_multimodal(frase, imagem, input_type="document")
@@ -158,7 +158,7 @@ def main():
             "descricao": item["descricao"],
             "frase_analise": frase,
             "tipo_defeito": derivar_tipo_defeito(sku, checklist),
-            "imagem_uri": up["uri"],
+            "imagem_uri": imagem_uri,
             "arquivo": caminho.name,
             "status": "resolvido",
             "resolucao_final": item["resolucao_final"],

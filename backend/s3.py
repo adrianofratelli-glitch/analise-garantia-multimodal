@@ -88,3 +88,23 @@ def presigned_url_from_uri(uri: str) -> str:
     _, _, rest = uri.partition("s3://")
     _, _, key = rest.partition("/")
     return presigned_url(key)
+
+
+def enabled() -> bool:
+    """True se o object storage estiver configurado (S3_BUCKET definido)."""
+    return bool(os.getenv("S3_BUCKET"))
+
+
+def try_upload(data: bytes, arquivo: str, prefixo: str = "chamados") -> str | None:
+    """Best-effort: sobe pro S3 se configurado; devolve a URI s3:// ou None.
+
+    Nunca levanta — se o storage não estiver configurado ou o upload falhar,
+    retorna None e a aplicação segue (object storage é opcional na PoV).
+    """
+    if not enabled():
+        return None
+    try:
+        return upload_bytes(data, arquivo, prefixo)["uri"]
+    except Exception as e:  # noqa: BLE001
+        print(f"[s3] upload best-effort falhou, seguindo sem persistir: {e}")
+        return None
