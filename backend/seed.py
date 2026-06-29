@@ -54,8 +54,10 @@ def resolver_imagem(arquivo: str) -> Path | None:
     Ex.: arquivo='cad_01.png' encontra cad_01.jpg, cad_01.jpeg ou cad_01.png.
     """
     stem = Path(arquivo).stem
-    candidatos = [SEED_IMAGES / arquivo] + [SEED_IMAGES / f"{stem}{ext}" for ext in IMG_EXTS]
-    for c in candidatos:
+    # IMG_EXTS define a prioridade: jpg/jpeg antes de png, então uma foto real
+    # .jpg vence um placeholder .png que tenha sobrado na pasta.
+    for ext in IMG_EXTS:
+        c = SEED_IMAGES / f"{stem}{ext}"
         if c.exists():
             return c
     return None
