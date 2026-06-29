@@ -182,7 +182,7 @@ async def analisar(
     frase = compor_frase(sku, checklist, descricao)
 
     # 2. persiste a foto no object storage (o Mongo guarda só a URI + metadados)
-    up = s3.upload_bytes(imagem_bytes, imagem.filename or "upload.png", prefixo="chamados")
+    imagem_uri = s3.try_upload(imagem_bytes, imagem.filename or "upload.png", prefixo="chamados")
     # devolve a imagem ao front como data-URI (não expõe a URL/origem do storage)
     imagem_data_uri = f"data:{media_type};base64,{base64.standard_b64encode(imagem_bytes).decode()}"
 
@@ -209,7 +209,7 @@ async def analisar(
         "descricao": descricao,
         "frase_analise": frase,
         "tipo_defeito": derivar_tipo_defeito(sku, checklist),
-        "imagem_uri": up["uri"],
+        "imagem_uri": imagem_uri,
         "status": "em_analise",
         "veredito": veredito,
         "origem": "runtime",
