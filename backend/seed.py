@@ -42,7 +42,23 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 SEED_IMAGES = Path(__file__).resolve().parents[1] / "seed_images"
 
+# extensões aceitas para as fotos dos chamados (jpg/jpeg/png/webp)
+IMG_EXTS = [".jpg", ".jpeg", ".png", ".webp"]
+
 NOW = datetime.now(timezone.utc)
+
+
+def resolver_imagem(arquivo: str) -> Path | None:
+    """Acha a foto por nome-base, aceitando qualquer extensão de IMG_EXTS.
+
+    Ex.: arquivo='cad_01.png' encontra cad_01.jpg, cad_01.jpeg ou cad_01.png.
+    """
+    stem = Path(arquivo).stem
+    candidatos = [SEED_IMAGES / arquivo] + [SEED_IMAGES / f"{stem}{ext}" for ext in IMG_EXTS]
+    for c in candidatos:
+        if c.exists():
+            return c
+    return None
 
 # Definição do índice de vetor a criar no Atlas (NÃO é criado por este script).
 INDICE_VETOR = {
@@ -114,16 +130,18 @@ def main():
         # 1. frase IDÊNTICA à do runtime (mesma função de defeitos_catalog)
         frase = compor_frase(sku, checklist, item["descricao"])
 
-        # 2. abre a imagem local e sobe pro S3
-        caminho = SEED_IMAGES / item["arquivo"]
-        if not caminho.exists():
+        # 2. abre a imagem local (jpg/jpeg/png) e sobe pro S3
+        caminho = resolver_imagem(item["arquivo"])
+        if caminho is None:
+            stem = Path(item["arquivo"]).stem
             sys.exit(
-                f"Imagem não encontrada: {caminho}\n"
-                "Gere os placeholders com: python seed_images/gen_placeholders.py"
+                f"Imagem não encontrada: {SEED_IMAGES}/{stem}.(jpg|jpeg|png)\n"
+                "Adicione a foto em seed_images/ ou gere placeholders com: "
+                "python seed_images/gen_placeholders.py"
             )
         imagem = Image.open(caminho).convert("RGB")
         with open(caminho, "rb") as fh:
-            up = s3.upload_bytes(fh.read(), item["arquivo"], prefixo="seed")
+            up = s3.upload_bytes(fh.read(), caminho.name, prefixo="seed")
 
         # 3. embedding multimodal (texto + imagem), input_type="document"
         embedding = voyage.embed_multimodal(frase, imagem, input_type="document")
@@ -139,7 +157,7 @@ def main():
             "frase_analise": frase,
             "tipo_defeito": derivar_tipo_defeito(sku, checklist),
             "imagem_uri": up["uri"],
-            "arquivo": item["arquivo"],
+            "arquivo": caminho.name,
             "status": "resolvido",
             "resolucao_final": item["resolucao_final"],
             "veredito": item["veredito"],
