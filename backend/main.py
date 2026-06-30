@@ -1,50 +1,37 @@
-"""FastAPI — Análise de Garantia Multimodal (PoV de referência).
+"""FastAPI — MM Análise de Garantia (PoV MadeiraMadeira).
 
-PoV vendor-neutra de busca multimodal (imagem + texto) no MongoDB Atlas.
-O domínio (garantia de móveis) é só o dataset de exemplo — troque pelo seu caso.
+Fluxo do portal: pedido -> produto -> checklist+descrição -> foto -> análise.
+Caminho B: embedding multimodal MANUAL, imagem em storage local (file://),
+$vectorSearch com queryVector pré-computado + filtro {categoria, status:resolvido},
+veredito do Claude via tool use (sempre revisao_humana=true).
 
-Fluxo do analista:
-  pedido -> produto -> checklist+descrição -> upload da foto -> veredito.
-
-Endpoints (sob /api, proxied pelo nginx/vite):
-  GET  /api/health
-  POST /api/lookup              {numero_pedido} -> produtos do pedido (PEDIDOS_MOCK)
-  GET  /api/checklist/{categoria} -> itens de CATALOGO_DEFEITOS
-  POST /api/analisar            (multipart) -> compor_frase -> S3 -> embed query
-                                -> $vectorSearch -> Claude -> grava em_analise
-                                -> veredito + precedentes + funnel
-  POST /api/revisar             {numero_chamado, resolucao_final} -> resolvido
-
-Erros operacionais sobem como SafeQueryError -> 503 {error:{kind,message}} -> Banner.
+MongoDB como motor: pedidos, catálogo e chamados são collections; lookup e
+checklist LEEM do banco (não mais de dicts hardcoded). Erros -> SafeQueryError -> Banner.
 """
 
-import base64
 import io
+import json
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from bson import ObjectId
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import FastAPI, Form, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from PIL import Image
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 
+import config
 import rag
-import s3
-import voyage
-from db import MAX_TIME_MS, VECTOR_INDEX, get_client, get_collection, safe_query
-from defeitos_catalog import (
-    CATALOGO_DEFEITOS,
-    PRODUTOS,
-    categoria_do_sku,
-    compor_frase,
-    derivar_tipo_defeito,
-    nome_do_produto,
-)
-from llm import analisar_veredito
-from seed_data import PEDIDOS_MOCK
+from db import SafeQueryError, catalogo, chamados, get_client, pedidos, safe_query
+from defeitos_catalog import compor_frase, derivar_tipo_defeito
+from llm import MODEL, analisar_veredito
+from storage import upload_imagem
+from voyage import embed_multimodal
 
-app = FastAPI(title="Análise de Garantia Multimodal")
+app = FastAPI(title="MM Análise de Garantia")
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,17 +40,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Imagens servidas localmente (PoV). Em prod, trocar storage.py por S3 + CDN.
+config.MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+app.mount(config.MEDIA_URL_PREFIX, StaticFiles(directory=str(config.MEDIA_ROOT)), name="media")
 
-@app.exception_handler(Exception)
-async def _unexpected(_: Request, exc: Exception):
-    # SafeQueryError tem .kind/.message; demais viram erro genérico amigável.
-    kind = getattr(exc, "kind", "erro")
-    message = getattr(exc, "message", str(exc))
-    return JSONResponse(status_code=503, content={"error": {"kind": kind, "message": message}})
+ALLOWED_MEDIA = {"image/jpeg", "image/png"}
+
+
+@app.exception_handler(SafeQueryError)
+async def safe_query_handler(_: Request, exc: SafeQueryError):
+    return JSONResponse(status_code=503, content={"error": {"kind": exc.kind, "message": exc.message}})
 
 
 def clean(doc):
-    """ObjectId/datetime -> string para JSON."""
     if isinstance(doc, list):
         return [clean(d) for d in doc]
     if isinstance(doc, dict):
@@ -73,41 +62,22 @@ def clean(doc):
     return doc
 
 
-# --------------------------------------------------------------------------- #
-# Health
-# --------------------------------------------------------------------------- #
 @app.get("/api/health")
 async def health():
     await safe_query(get_client().admin.command("ping"))
-    coll = get_collection()
-    total = await safe_query(coll.count_documents({}, maxTimeMS=MAX_TIME_MS))
-    resolvidos = await safe_query(
-        coll.count_documents({"status": "resolvido"}, maxTimeMS=MAX_TIME_MS)
-    )
+    col = chamados()
     return {
         "ping": "ok",
-        "counts": {"chamados": total, "resolvidos": resolvidos},
-        "vector_index": VECTOR_INDEX,
-        "dims": voyage.EMBED_DIMS,
+        "model": MODEL,
+        "db": config.DB_NAME,
+        "counts": {
+            "total": await safe_query(col.count_documents({}, maxTimeMS=config.MAX_TIME_MS)),
+            "resolvido": await safe_query(col.count_documents({"status": "resolvido"}, maxTimeMS=config.MAX_TIME_MS)),
+            "em_analise": await safe_query(col.count_documents({"status": "em_analise"}, maxTimeMS=config.MAX_TIME_MS)),
+        },
     }
 
 
-# --------------------------------------------------------------------------- #
-# Lista de pedidos (para seleção no front — sem digitação)
-# --------------------------------------------------------------------------- #
-@app.get("/api/pedidos")
-async def pedidos():
-    return {
-        "pedidos": [
-            {"numero_pedido": p["numero_pedido"], "cliente": p["cliente"], "data": p["data"]}
-            for p in PEDIDOS_MOCK
-        ]
-    }
-
-
-# --------------------------------------------------------------------------- #
-# Lookup do pedido -> produtos
-# --------------------------------------------------------------------------- #
 class LookupBody(BaseModel):
     numero_pedido: str
 
@@ -115,125 +85,135 @@ class LookupBody(BaseModel):
 @app.post("/api/lookup")
 async def lookup(body: LookupBody):
     numero = body.numero_pedido.strip().upper()
-    pedido = next((p for p in PEDIDOS_MOCK if p["numero_pedido"].upper() == numero), None)
-    if not pedido:
-        return JSONResponse(
-            status_code=404,
-            content={
-                "error": {
-                    "kind": "pedido",
-                    "message": f"Pedido '{body.numero_pedido}' não encontrado. "
-                    f"Tente um destes: {', '.join(p['numero_pedido'] for p in PEDIDOS_MOCK)}.",
-                }
-            },
+    doc = await safe_query(pedidos().find_one({"numero_pedido": numero}, {"_id": 0}, max_time_ms=config.MAX_TIME_MS))
+    if not doc:
+        disponiveis = await safe_query(
+            pedidos().distinct("numero_pedido")
         )
-    produtos = [
-        {
-            "sku": sku,
-            "nome": nome_do_produto(sku),
-            "categoria": categoria_do_sku(sku),
-        }
-        for sku in pedido["itens"]
-    ]
-    return {
-        "numero_pedido": pedido["numero_pedido"],
-        "cliente": pedido["cliente"],
-        "data": pedido["data"],
-        "produtos": produtos,
-    }
+        raise SafeQueryError(
+            "config",
+            f"Pedido {numero} não encontrado. Tente um de: {', '.join(sorted(disponiveis)) or '(seed pendente)'}.",
+        )
+    return {"numero_pedido": numero, "produtos": doc["produtos"]}
 
 
-# --------------------------------------------------------------------------- #
-# Checklist por categoria
-# --------------------------------------------------------------------------- #
 @app.get("/api/checklist/{categoria}")
 async def checklist(categoria: str):
-    itens = CATALOGO_DEFEITOS.get(categoria)
-    if itens is None:
-        return JSONResponse(
-            status_code=404,
-            content={"error": {"kind": "categoria", "message": f"Categoria '{categoria}' desconhecida."}},
-        )
-    return {"categoria": categoria, "itens": itens}
+    doc = await safe_query(catalogo().find_one({"categoria": categoria}, {"_id": 0}, max_time_ms=config.MAX_TIME_MS))
+    if not doc:
+        raise SafeQueryError("config", f"Categoria '{categoria}' sem checklist no catálogo.")
+    return {"categoria": categoria, "itens": doc["itens"]}
 
 
-# --------------------------------------------------------------------------- #
-# Análise (multipart): foto + dados -> veredito + precedentes + funnel
-# --------------------------------------------------------------------------- #
+async def _resolver_produto(numero_pedido: str, sku: str) -> dict:
+    doc = await safe_query(pedidos().find_one({"numero_pedido": numero_pedido.strip().upper()}, max_time_ms=config.MAX_TIME_MS))
+    for p in (doc or {}).get("produtos", []):
+        if p["sku"] == sku:
+            return p
+    raise SafeQueryError("config", f"SKU {sku} não pertence ao pedido {numero_pedido}.")
+
+
+async def _tabela_catalogo(categoria: str) -> dict:
+    doc = await safe_query(catalogo().find_one({"categoria": categoria}, {"_id": 0}, max_time_ms=config.MAX_TIME_MS))
+    return {item["id"]: item["tipo"] for item in (doc or {}).get("itens", [])}
+
+
 @app.post("/api/analisar")
 async def analisar(
-    imagem: UploadFile = File(...),
+    imagem: UploadFile,
     numero_pedido: str = Form(...),
     sku: str = Form(...),
+    descricao: str = Form(""),
     checklist: list[str] = Form(default=[]),
-    descricao: str = Form(default=""),
+    modo: str = Form("vector"),  # "vector" (padrão) ou "hybrid" ($rankFusion)
 ):
-    if sku not in PRODUTOS:
-        return JSONResponse(
-            status_code=400,
-            content={"error": {"kind": "sku", "message": f"SKU '{sku}' não pertence ao catálogo."}},
-        )
+    produto = await _resolver_produto(numero_pedido, sku)
+    categoria = produto["categoria"]
 
-    categoria = categoria_do_sku(sku)
-    media_type = imagem.content_type or "image/png"
     imagem_bytes = await imagem.read()
+    if not imagem_bytes:
+        raise SafeQueryError("imagem", "Nenhuma imagem recebida.")
+    if len(imagem_bytes) > config.MAX_IMAGE_BYTES:
+        mb = config.MAX_IMAGE_BYTES // (1024 * 1024)
+        raise SafeQueryError("imagem", f"Imagem maior que o limite de {mb} MB.")
+    try:
+        pil = Image.open(io.BytesIO(imagem_bytes)).convert("RGB")
+    except (UnidentifiedImageError, OSError):
+        raise SafeQueryError("imagem", "Arquivo enviado não é uma imagem válida.")
+    # Normaliza TUDO para JPEG: garante que o media_type bate com os bytes e que o
+    # formato é sempre suportado pelo Claude (evita 400 com PNG/WebP/content-type
+    # divergente). A mesma imagem normalizada vai pro storage, Voyage e Claude.
+    _buf = io.BytesIO()
+    pil.save(_buf, format="JPEG", quality=90)
+    imagem_jpeg = _buf.getvalue()
+    media_type = "image/jpeg"
 
-    # 1. frase de análise (mesma função do seed -> embeddings comparáveis)
-    frase = compor_frase(sku, checklist, descricao)
+    chamado = {
+        "categoria": categoria,
+        "produto": {"sku": produto["sku"], "nome": produto["nome"]},
+        "checklist": checklist,
+        "descricao_cliente": descricao,
+    }
+    frase = compor_frase(chamado)
+    tabela = await _tabela_catalogo(categoria)
 
-    # 2. persiste a foto no object storage (o Mongo guarda só a URI + metadados)
-    imagem_uri = s3.try_upload(imagem_bytes, imagem.filename or "upload.png", prefixo="chamados")
-    # devolve a imagem ao front como data-URI (não expõe a URL/origem do storage)
-    imagem_data_uri = f"data:{media_type};base64,{base64.standard_b64encode(imagem_bytes).decode()}"
+    numero_chamado = f"CHM-{datetime.now(timezone.utc).year}-{uuid4().hex[:6].upper()}"
+    key = f"chamados/{numero_chamado}/foto.jpg"
+    uri, imagem_url = await run_in_threadpool(upload_imagem, imagem_jpeg, key, media_type)
 
-    # 3. embedding multimodal da QUERY (texto + imagem), input_type="query"
-    pil = Image.open(io.BytesIO(imagem_bytes)).convert("RGB")
-    query_vector = voyage.embed_multimodal(frase, pil, input_type="query")
+    try:
+        query_vector = await run_in_threadpool(embed_multimodal, frase, pil, "query")
+    except Exception as e:
+        raise SafeQueryError("embedding", f"Falha ao gerar o embedding multimodal: {str(e)[:160]}")
 
-    # 4. $vectorSearch -> precedentes resolvidos da mesma categoria
-    precedentes, funnel = await rag.vector_search(query_vector, categoria)
+    if modo == "hybrid":
+        precedentes, funnel = await rag.hybrid_search(query_vector, frase, categoria)
+    else:
+        precedentes, funnel = await rag.vector_search(query_vector, categoria)
 
-    # 5. Claude (visão) emite o veredito com base na foto + frase + relato + precedentes
-    veredito = await analisar_veredito(imagem_bytes, media_type, frase, precedentes, descricao)
+    try:
+        veredito = await analisar_veredito(imagem_jpeg, media_type, frase, precedentes)
+    except Exception as e:
+        raise SafeQueryError("modelo", f"Falha ao consultar o Claude: {str(e)[:160]}")
 
-    # 6. grava o chamado em análise (já com embedding, para virar precedente após revisão)
-    now = datetime.now(timezone.utc)
-    numero_chamado = f"CH-{int(now.timestamp())}"
     doc = {
         "numero_chamado": numero_chamado,
-        "numero_pedido": numero_pedido,
-        "sku": sku,
-        "nome_produto": nome_do_produto(sku),
+        "numero_pedido": numero_pedido.strip().upper(),
+        "produto": chamado["produto"],
         "categoria": categoria,
+        "tipo_defeito": derivar_tipo_defeito(tabela, checklist),
         "checklist": checklist,
-        "descricao": descricao,
+        "descricao_cliente": descricao,
         "frase_analise": frase,
-        "tipo_defeito": derivar_tipo_defeito(sku, checklist),
-        "imagem_uri": imagem_uri,
-        "status": "em_analise",
-        "veredito": veredito,
-        "origem": "runtime",
-        "created_at": now,
+        "imagem_cliente_uri": uri,
         "embedding": query_vector,
+        "veredito": veredito,
+        "resolucao_final": None,
+        "status": "em_analise",
+        "created_at": datetime.now(timezone.utc),
     }
-    await safe_query(get_collection().insert_one(doc))
+    await safe_query(chamados().insert_one(doc))
 
-    return clean(
-        {
-            "numero_chamado": numero_chamado,
-            "categoria": categoria,
-            "frase_analise": frase,
-            "imagem_url": imagem_data_uri,
-            "veredito": veredito,
-            "precedentes": precedentes,
-            "funnel": funnel,
-        }
-    )
+    return clean({
+        "numero_chamado": numero_chamado,
+        "categoria": categoria,
+        "produto": chamado["produto"],
+        "frase_analise": frase,
+        "imagem_url": imagem_url,
+        "veredito": veredito,
+        "precedentes": [{k: v for k, v in p.items() if k != "embedding"} for p in precedentes],
+        "funnel": funnel,
+    })
 
 
-# --------------------------------------------------------------------------- #
-# Revisão humana -> resolve o chamado
-# --------------------------------------------------------------------------- #
+@app.get("/api/chamados/pendentes")
+async def chamados_pendentes():
+    cursor = chamados().find(
+        {"status": "em_analise"}, {"embedding": 0}, max_time_ms=config.MAX_TIME_MS
+    ).sort("created_at", -1)
+    return clean(await safe_query(cursor.to_list(length=50)))
+
+
 class RevisarBody(BaseModel):
     numero_chamado: str
     resolucao_final: str
@@ -242,24 +222,72 @@ class RevisarBody(BaseModel):
 @app.post("/api/revisar")
 async def revisar(body: RevisarBody):
     res = await safe_query(
-        get_collection().update_one(
+        chamados().update_one(
             {"numero_chamado": body.numero_chamado},
-            {
-                "$set": {
-                    "status": "resolvido",
-                    "resolucao_final": body.resolucao_final,
-                    "resolvido_at": datetime.now(timezone.utc),
-                }
-            },
+            {"$set": {
+                "resolucao_final": body.resolucao_final,
+                "status": "resolvido",
+                "veredito.revisao_humana": True,
+                "revisado_at": datetime.now(timezone.utc),
+            }},
         )
     )
     if res.matched_count == 0:
-        return JSONResponse(
-            status_code=404,
-            content={"error": {"kind": "chamado", "message": f"Chamado '{body.numero_chamado}' não encontrado."}},
-        )
+        raise SafeQueryError("config", f"Chamado {body.numero_chamado} não encontrado.")
     doc = await safe_query(
-        get_collection().find_one({"numero_chamado": body.numero_chamado}, max_time_ms=MAX_TIME_MS)
+        chamados().find_one({"numero_chamado": body.numero_chamado}, {"embedding": 0}, max_time_ms=config.MAX_TIME_MS)
     )
-    doc.pop("embedding", None)
-    return clean({"numero_chamado": body.numero_chamado, "status": "resolvido", "chamado": doc})
+    return clean(doc)
+
+
+@app.get("/api/analytics")
+async def analytics():
+    """Aggregation Pipeline — material para Atlas Charts: distribuição de
+    classificações, confiança média e latência média do modelo, por categoria."""
+    col = chamados()
+    por_classificacao = await safe_query(col.aggregate([
+        {"$group": {
+            "_id": "$veredito.classificacao",
+            "n": {"$sum": 1},
+            "confianca_media": {"$avg": "$veredito.confianca"},
+            "latencia_media_ms": {"$avg": "$veredito._meta.latency_ms"},
+        }},
+        {"$sort": {"n": -1}},
+    ], maxTimeMS=config.MAX_TIME_MS).to_list(length=20))
+
+    por_categoria = await safe_query(col.aggregate([
+        {"$group": {
+            "_id": {"categoria": "$categoria", "classificacao": "$veredito.classificacao"},
+            "n": {"$sum": 1},
+        }},
+        {"$sort": {"_id.categoria": 1, "n": -1}},
+    ], maxTimeMS=config.MAX_TIME_MS).to_list(length=100))
+
+    return clean({"por_classificacao": por_classificacao, "por_categoria": por_categoria})
+
+
+@app.get("/api/chamados/stream")
+async def chamados_stream():
+    """Change Stream (SSE) — empurra novos chamados em_analise em tempo real,
+    sem polling. Demonstra real-time operacional nativo do MongoDB."""
+
+    async def _gen():
+        pipeline = [{"$match": {"operationType": {"$in": ["insert", "update", "replace"]}}}]
+        try:
+            async with chamados().watch(pipeline, full_document="updateLookup") as stream:
+                yield ": stream conectado\n\n"
+                async for change in stream:
+                    doc = change.get("fullDocument") or {}
+                    if doc.get("status") != "em_analise":
+                        continue
+                    payload = {
+                        "numero_chamado": doc.get("numero_chamado"),
+                        "categoria": doc.get("categoria"),
+                        "produto": doc.get("produto"),
+                        "status": doc.get("status"),
+                    }
+                    yield f"data: {json.dumps(payload, default=str)}\n\n"
+        except Exception as e:  # change streams exigem replica set (Atlas tem)
+            yield f"event: error\ndata: {json.dumps({'message': str(e)[:200]})}\n\n"
+
+    return StreamingResponse(_gen(), media_type="text/event-stream")

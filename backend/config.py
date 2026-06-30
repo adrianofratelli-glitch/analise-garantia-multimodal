@@ -1,0 +1,49 @@
+"""Configuração central — tudo parametrizado pelo .env.
+
+Substitui os valores hardcoded espalhados (DB "POC", índice "chamados_vector",
+modelo de embedding) por leitura única do .env. O .env é procurado subindo a
+árvore de diretórios a partir daqui, então funciona tanto com .env na raiz do
+repo quanto dentro de mm-analise-garantia/.
+"""
+
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+def _find_env() -> Path | None:
+    here = Path(__file__).resolve()
+    for parent in [here.parent, *here.parents]:
+        cand = parent / ".env"
+        if cand.exists():
+            return cand
+    return None
+
+
+_ENV_PATH = _find_env()
+if _ENV_PATH:
+    load_dotenv(_ENV_PATH)
+
+# --- MongoDB ---
+MONGODB_URI = os.getenv("MONGODB_URI")
+DB_NAME = os.getenv("MONGODB_DB", "madeira_madeira")
+CHAMADOS_COLL = os.getenv("MONGODB_COLLECTION", "chamados")
+CATALOGO_COLL = os.getenv("MONGODB_CATALOGO_COLLECTION", "catalogo")
+PEDIDOS_COLL = os.getenv("MONGODB_PEDIDOS_COLLECTION", "pedidos")
+VECTOR_INDEX = os.getenv("VECTOR_INDEX_NAME", "defeitos_vector_index")
+TEXT_INDEX = os.getenv("TEXT_INDEX_NAME", "chamados_text_index")
+MAX_TIME_MS = int(os.getenv("MONGODB_MAX_TIME_MS", "10000"))
+
+# --- Embedding (Voyage multimodal) ---
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "voyage-multimodal-3")
+EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIMENSIONS", "1024"))
+
+# --- Anthropic (Claude visão) ---
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+ANTHROPIC_MAX_TOKENS = int(os.getenv("ANTHROPIC_MAX_TOKENS", "1024"))
+
+# --- Armazenamento de imagens (local no PoV; trocar backend p/ S3 em prod) ---
+MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT", str(Path(__file__).resolve().parent / "media")))
+MEDIA_URL_PREFIX = os.getenv("MEDIA_URL_PREFIX", "/media")
+MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(10 * 1024 * 1024)))  # 10 MB

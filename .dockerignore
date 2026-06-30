@@ -4,4 +4,6 @@ backend/.venv
 backend/__pycache__
 frontend/node_modules
 frontend/dist
+docs
+tests
 node_modules

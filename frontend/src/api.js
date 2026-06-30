@@ -1,5 +1,5 @@
-// Cliente HTTP. Erros do backend chegam como {error: {kind, message}} (503/404)
-// e viram ApiError — a UI mostra num Banner amarelo, nunca um stack trace.
+// HTTP client. Backend errors arrive as {error: {kind, message}} (503) and
+// become ApiError — the UI shows them in a yellow Banner, never a stack trace.
 
 export class ApiError extends Error {
   constructor(kind, message) {
@@ -26,39 +26,29 @@ async function request(path, options = {}) {
   return body;
 }
 
+async function upload(path, formData) {
+  // multipart — sem Content-Type manual (o browser põe o boundary)
+  let res;
+  try {
+    res = await fetch(path, { method: 'POST', body: formData });
+  } catch {
+    throw new ApiError('rede', 'Backend não respondeu. O FastAPI está rodando na porta 8000?');
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = body.error || {};
+    throw new ApiError(err.kind || 'erro', err.message || `Erro HTTP ${res.status}`);
+  }
+  return body;
+}
+
 export const api = {
   health: () => request('/api/health'),
-
-  pedidos: () => request('/api/pedidos'),
-
   lookup: (numero_pedido) =>
     request('/api/lookup', { method: 'POST', body: JSON.stringify({ numero_pedido }) }),
-
   checklist: (categoria) => request(`/api/checklist/${categoria}`),
-
-  // multipart — NÃO setar Content-Type (o browser põe o boundary)
-  analisar: async ({ imagem, numero_pedido, sku, checklist, descricao }) => {
-    const fd = new FormData();
-    fd.append('imagem', imagem);
-    fd.append('numero_pedido', numero_pedido);
-    fd.append('sku', sku);
-    fd.append('descricao', descricao || '');
-    (checklist || []).forEach((id) => fd.append('checklist', id));
-
-    let res;
-    try {
-      res = await fetch('/api/analisar', { method: 'POST', body: fd });
-    } catch {
-      throw new ApiError('rede', 'Backend não respondeu. O FastAPI está rodando na porta 8000?');
-    }
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const err = body.error || {};
-      throw new ApiError(err.kind || 'erro', err.message || `Erro HTTP ${res.status}`);
-    }
-    return body;
-  },
-
+  analisar: (formData) => upload('/api/analisar', formData),
+  pendentes: () => request('/api/chamados/pendentes'),
   revisar: (numero_chamado, resolucao_final) =>
     request('/api/revisar', {
       method: 'POST',

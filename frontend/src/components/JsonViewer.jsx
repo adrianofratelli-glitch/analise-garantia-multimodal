@@ -1,6 +1,6 @@
 import Code from '@leafygreen-ui/code';
 
-/** Documento BSON renderizado como JSON escuro, fonte mono. */
+/** BSON document rendered as dark JSON, IBM Plex Mono font. */
 export default function JsonViewer({ doc, flashKey }) {
   return (
     <div className={`json-scroll ${flashKey ? 'flash' : ''}`} key={flashKey}>
