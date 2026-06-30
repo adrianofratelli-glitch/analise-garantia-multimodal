@@ -1,59 +1,36 @@
-"""Cliente Voyage AI — embedding multimodal MANUAL (Caminho B).
+"""Embedding multimodal via SDK voyageai (modelo do .env).
 
-Usamos voyage-multimodal-3 via SDK `voyageai` para gerar UM vetor de 1024
-dimensões a partir de texto + imagem juntos. Esse vetor é o que vai pro
-$vectorSearch do Atlas.
+Caminho B: NÃO usamos autoEmbed do Atlas (text-only). Computamos o vetor aqui e
+gravamos embedding[EMBEDDING_DIM] no documento.
 
-IMPORTANTE: não usamos autoEmbed do Atlas — autoEmbed é text-only e não enxerga
-a imagem. Aqui o embedding é multimodal e calculado pela aplicação, tanto no
-seed (input_type="document") quanto no runtime (input_type="query").
+Contrato de consistência: a MESMA função embeda no seed (input_type="document")
+e no runtime (input_type="query"). Modelo/dimensão vêm do config (.env).
 """
 
-import os
-from pathlib import Path
+import voyageai
 
-from dotenv import load_dotenv
+import config
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+MODEL = config.EMBEDDING_MODEL
+EMBED_DIM = config.EMBEDDING_DIM
 
-MODEL = "voyage-multimodal-3"
-EMBED_DIMS = 1024
-
-_client = None
+_client: voyageai.Client | None = None
 
 
-def get_client():
-    """Cliente voyageai preguiçoso (lê VOYAGE_API_KEY do ambiente)."""
+def get_client() -> voyageai.Client:
     global _client
     if _client is None:
-        import voyageai
-
-        api_key = os.getenv("VOYAGE_API_KEY")
-        if not api_key:
-            raise RuntimeError(
-                "VOYAGE_API_KEY não definida. Copie .env.example para .env e preencha a chave da Voyage."
-            )
-        _client = voyageai.Client(api_key=api_key)
+        _client = voyageai.Client()  # lê VOYAGE_API_KEY do ambiente (config carregou o .env)
     return _client
 
 
 def embed_multimodal(frase: str, imagem_pil, input_type: str) -> list[float]:
-    """Gera o embedding multimodal (texto + imagem) de UM chamado.
+    """Retorna o vetor para o par (imagem, frase).
 
-    Args:
-        frase: texto da análise (saída de compor_frase()).
-        imagem_pil: PIL.Image.Image da foto do produto.
-        input_type: "document" no seed, "query" no runtime.
-
-    Returns:
-        Lista de 1024 floats (vetor cosine-normalizado pela Voyage).
+    input_type: "document" no seed, "query" no runtime — assimetria recomendada
+    pela Voyage para alinhar consultas a documentos indexados.
     """
-    if input_type not in ("document", "query"):
-        raise ValueError("input_type deve ser 'document' (seed) ou 'query' (runtime).")
-
-    client = get_client()
-    # Cada "input" é uma sequência intercalando texto e imagem(ns) PIL.
-    result = client.multimodal_embed(
+    result = get_client().multimodal_embed(
         inputs=[[frase, imagem_pil]],
         model=MODEL,
         input_type=input_type,

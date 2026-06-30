@@ -1,5 +1,5 @@
 {
-  "name": "analise-garantia-multimodal-frontend",
+  "name": "mm-analise-garantia-frontend",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -12,8 +12,11 @@
     "@leafygreen-ui/badge": "^9.0.0",
     "@leafygreen-ui/banner": "^10.0.0",
     "@leafygreen-ui/button": "^22.0.0",
+    "@leafygreen-ui/card": "^11.0.0",
     "@leafygreen-ui/code": "^15.0.0",
     "@leafygreen-ui/leafygreen-provider": "^4.0.0",
+    "@leafygreen-ui/table": "^13.0.0",
+    "@leafygreen-ui/tabs": "^14.0.0",
     "@leafygreen-ui/text-input": "^14.0.0",
     "@leafygreen-ui/typography": "^20.0.0",
     "buffer": "^6.0.3",

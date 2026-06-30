@@ -1,56 +1,49 @@
 #!/usr/bin/env bash
-# Comando único da PoV: prepara o que falta e sobe a aplicação.
-#
-#   ./run.sh           sobe backend (:8000) + frontend (:5173)
-#   ./run.sh --seed     idem, mas roda o seed antes (popula a collection)
-#
-# É idempotente: cria o venv / instala as deps só na primeira vez; nas próximas
-# execuções pula direto pra subir os servidores.
+# Sobe a aplicação "MM — Análise de Garantia" e abre no navegador.
+# Atalho: digite `image` no terminal (alias no ~/.zshrc).
 set -e
-cd "$(dirname "$0")"
+ROOT="/Users/adriano.fratelli/Documents/MadeiraMadeira/mm-analise-garantia"
+cd "$ROOT"
 
-# 0. .env precisa existir e estar preenchido
-if [ ! -f .env ]; then
-  cp .env.example .env
-  echo "✖ Criei .env a partir do .env.example."
-  echo "  Preencha as credenciais (MONGODB_URI, ANTHROPIC_API_KEY, VOYAGE_API_KEY, S3_*) e rode de novo."
-  exit 1
-fi
-
-# 1. backend — venv + deps (só na 1ª vez)
-if [ ! -d backend/.venv ]; then
-  echo "▶ criando venv e instalando deps do backend (1ª vez)…"
-  python -m venv backend/.venv
-  backend/.venv/bin/pip install -q -r backend/requirements.txt
+# --- backend (FastAPI :8000) ---
+if lsof -ti :8000 >/dev/null 2>&1; then
+  echo "✔ backend já rodando em :8000"
 else
-  echo "✔ backend já preparado"
+  echo "▶ subindo backend :8000"
+  ( cd backend && nohup ./.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 \
+      > /tmp/mm-garantia-backend.log 2>&1 & )
 fi
 
-# 2. frontend — node_modules (só na 1ª vez)
-if [ ! -d frontend/node_modules ]; then
-  echo "▶ instalando deps do frontend (1ª vez)…"
-  (cd frontend && npm install)
+# --- deps do frontend (primeira vez; LeafyGreen exige --legacy-peer-deps) ---
+if [ ! -x frontend/node_modules/.bin/vite ]; then
+  echo "▶ instalando dependências do frontend (primeira vez)..."
+  ( cd frontend && npm install --legacy-peer-deps )
+fi
+
+# --- frontend (Vite :5173) ---
+if lsof -ti :5173 >/dev/null 2>&1; then
+  echo "✔ frontend já rodando em :5173"
 else
-  echo "✔ frontend já preparado"
+  echo "▶ subindo frontend :5173"
+  ( cd frontend && nohup ./node_modules/.bin/vite --port 5173 --host 127.0.0.1 \
+      > /tmp/mm-garantia-frontend.log 2>&1 & )
 fi
 
-# 3. seed (opcional) — popula a collection e imprime o JSON do índice de vetor.
-#    Rode na 1ª vez (ou quando quiser repopular). Depois o índice fica no Atlas.
-if [ "$1" = "--seed" ]; then
-  echo "▶ seed — populando POC.chamados…"
-  (cd backend && ../backend/.venv/bin/python seed.py --reset cadeira)
-  echo "  ↑ crie o índice 'chamados_vector' no Atlas com o JSON acima (só na 1ª vez)."
-fi
-
-# 4. backend FastAPI :8000 — só sobe se a porta estiver livre (preserva outras POCs)
-if ! lsof -ti :8000 >/dev/null 2>&1; then
-  echo "▶ backend FastAPI :8000"
-  (cd backend && .venv/bin/uvicorn main:app --port 8000 &)
-  sleep 2
-else
-  echo "✔ backend já rodando na :8000"
-fi
-
-# 5. frontend Vite :5173 (foreground — Ctrl+C encerra)
-echo "▶ frontend Vite :5173 — abra a porta 5173 quando subir"
-cd frontend && exec npx vite --port "${PORT:-5173}"
+# --- espera ficar pronto e abre o navegador ---
+printf "aguardando subir"
+for _ in $(seq 1 40); do
+  if curl -fsS http://127.0.0.1:5173 >/dev/null 2>&1 \
+     && curl -fsS http://127.0.0.1:8000/api/health >/dev/null 2>&1; then
+    echo ""
+    echo "✓ pronto: http://localhost:5173"
+    open http://localhost:5173
+    echo "  logs:  /tmp/mm-garantia-backend.log  ·  /tmp/mm-garantia-frontend.log"
+    echo "  parar: image-stop"
+    exit 0
+  fi
+  printf "."
+  sleep 1
+done
+echo ""
+echo "⚠ não respondeu a tempo — veja os logs em /tmp/mm-garantia-*.log"
+exit 1

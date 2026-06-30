@@ -1,33 +1,28 @@
-"""$vectorSearch sobre POC.chamados (índice 'chamados_vector').
+"""Recuperação de precedentes sobre a collection de chamados.
 
-O queryVector é PRÉ-COMPUTADO pela aplicação (Voyage multimodal) e passado
-pronto no pipeline — não usamos autoEmbed. Filtramos por categoria e só
-trazemos precedentes já resolvidos (status="resolvido").
+- vector_search: $vectorSearch puro (usado pelo /api/analisar). queryVector é
+  PRÉ-COMPUTADO (Caminho B). Pré-filtro {categoria, status:"resolvido"}.
+- hybrid_search: $rankFusion combinando vetorial + Atlas Search full-text (demo
+  da força do Atlas). Degrada com graça se o cluster não suportar $rankFusion.
 
-Devolve (docs, funnel): `funnel` carrega os números reais de cada etapa da
-recuperação, para o PipelineSteps.jsx mostrar o afunilamento candidatos → top-k.
+Nada aqui cria índice nem modifica documentos.
 """
 
-from db import MAX_TIME_MS, VECTOR_INDEX, get_collection, safe_query
+import config
+from db import chamados, safe_query
 
 NUM_CANDIDATES = 100
 LIMIT = 5
+_PROJECT = {"embedding": 0}
 
 
 async def vector_search(query_vector: list[float], categoria: str) -> tuple[list[dict], dict]:
-    """Recupera os precedentes mais parecidos com a foto+frase do chamado atual.
-
-    Args:
-        query_vector: vetor 1024-d pré-computado (Voyage, input_type="query").
-        categoria: 'cadeira' | 'colchao' | 'guarda_roupa' — filtro do vectorSearch.
-
-    Returns:
-        (docs, funnel)
-    """
+    """Retorna (docs, funnel). funnel carrega os números de cada estágio para o
+    PipelineSteps.jsx mostrar o afunilamento candidatos → contexto."""
     pipeline = [
         {
             "$vectorSearch": {
-                "index": VECTOR_INDEX,
+                "index": config.VECTOR_INDEX,
                 "path": "embedding",
                 "queryVector": query_vector,
                 "numCandidates": NUM_CANDIDATES,
@@ -36,25 +31,76 @@ async def vector_search(query_vector: list[float], categoria: str) -> tuple[list
             }
         },
         {"$addFields": {"score": {"$meta": "vectorSearchScore"}}},
-        {
-            "$project": {
-                "embedding": 0,    # não devolve o vetor (1024 floats) pro frontend
-                "imagem_uri": 0,   # não expõe a URI/origem do object storage
-            }
-        },
+        {"$project": _PROJECT},
     ]
-
-    cursor = get_collection().aggregate(pipeline, maxTimeMS=MAX_TIME_MS)
+    cursor = chamados().aggregate(pipeline, maxTimeMS=config.MAX_TIME_MS)
     docs = await safe_query(cursor.to_list(length=LIMIT))
-
     for d in docs:
         d["_id"] = str(d["_id"])
-
     funnel = {
+        "modo": "vector",
         "num_candidates": NUM_CANDIDATES,
         "limit": LIMIT,
         "filtro": {"categoria": categoria, "status": "resolvido"},
-        "recuperados": len(docs),
-        "melhor_score": round(docs[0]["score"], 4) if docs else None,
+        "retrieved": len(docs),
     }
     return docs, funnel
+
+
+async def hybrid_search(query_vector: list[float], texto: str, categoria: str) -> tuple[list[dict], dict]:
+    """Busca híbrida via $rankFusion (vetorial + full-text BM25), fundindo os dois
+    rankings. Cai para vector_search se o cluster não tiver $rankFusion."""
+    pipeline = [
+        {
+            "$rankFusion": {
+                "input": {
+                    "pipelines": {
+                        "vetorial": [
+                            {
+                                "$vectorSearch": {
+                                    "index": config.VECTOR_INDEX,
+                                    "path": "embedding",
+                                    "queryVector": query_vector,
+                                    "numCandidates": NUM_CANDIDATES,
+                                    "limit": LIMIT,
+                                    "filter": {"categoria": categoria, "status": "resolvido"},
+                                }
+                            }
+                        ],
+                        "textual": [
+                            {
+                                "$search": {
+                                    "index": config.TEXT_INDEX,
+                                    "compound": {
+                                        "must": [{"text": {"query": texto, "path": ["descricao_cliente", "frase_analise"]}}],
+                                        "filter": [
+                                            {"text": {"query": categoria, "path": "categoria"}},
+                                            {"text": {"query": "resolvido", "path": "status"}},
+                                        ],
+                                    },
+                                }
+                            },
+                            {"$limit": LIMIT},
+                        ],
+                    }
+                },
+                "combination": {"weights": {"vetorial": 0.7, "textual": 0.3}},
+            }
+        },
+        {"$limit": LIMIT},
+        {"$addFields": {"score": {"$meta": "score"}}},
+        {"$project": _PROJECT},
+    ]
+    try:
+        cursor = chamados().aggregate(pipeline, maxTimeMS=config.MAX_TIME_MS)
+        docs = await cursor.to_list(length=LIMIT)
+        for d in docs:
+            d["_id"] = str(d["_id"])
+        funnel = {"modo": "hybrid", "limit": LIMIT, "retrieved": len(docs),
+                  "pesos": {"vetorial": 0.7, "textual": 0.3}}
+        return docs, funnel
+    except Exception:
+        # $rankFusion (Mongo 8.1+) ou índice de texto ausente — cai para vetorial.
+        docs, funnel = await vector_search(query_vector, categoria)
+        funnel["modo"] = "vector_fallback"
+        return docs, funnel
