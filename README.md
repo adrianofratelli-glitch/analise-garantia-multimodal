@@ -17,6 +17,24 @@ that's just the dataset. Swap the catalog and seed data for your own case
 (insurance claims, asset inspection, quality control, e-commerce, visual
 diagnostics, etc.) and the rest stays the same.
 
+## Screenshots
+
+**Customer portal — open a warranty claim (order, product, checklist, photo).**
+
+![Customer portal](docs/screenshots/01-portal.png)
+
+**AI triage — verdict, confidence and the retrieval pipeline (path B).**
+
+![AI verdict](docs/screenshots/02-veredito.png)
+
+**A retrieved precedent, shown as a MongoDB document with its `$vectorSearch` score.**
+
+![Retrieved precedent](docs/screenshots/03-precedente.png)
+
+**Human review — the reviewer confirms or edits the verdict; the resolved case becomes a precedent.**
+
+![Human review](docs/screenshots/04-revisao.png)
+
 ## Why MongoDB (the differentiator)
 
 MongoDB Atlas is the engine for **every layer** of the application, not just the
