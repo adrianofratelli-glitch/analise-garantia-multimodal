@@ -94,7 +94,7 @@ export default function App() {
           </div>
           <div className="stat-item">
             <div className="stat-val">1024</div>
-            <div className="stat-label">dim · voyage-multimodal-3</div>
+            <div className="stat-label">dim · voyage-multimodal-3.5</div>
           </div>
           <div className="stat-item">
             <div className="stat-val" style={{ fontSize: '1rem', lineHeight: '1.9' }}>
@@ -112,7 +112,7 @@ export default function App() {
       </main>
 
       <footer className="app-footer">
-        <p>MongoDB Atlas · POC.chamados — $vectorSearch + voyage-multimodal-3 (Caminho B)</p>
+        <p>MongoDB Atlas · madeira_madeira.chamados — $vectorSearch + voyage-multimodal-3.5 (Caminho B)</p>
       </footer>
     </>
   );

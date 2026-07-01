@@ -8,7 +8,7 @@ import PipelineSteps from '../components/PipelineSteps.jsx';
 import VeredictoCard from '../components/VeredictoCard.jsx';
 import { api } from '../api.js';
 
-const STEPS = ['Compor frase', 'Subir foto ao S3', 'Embed multimodal', '$vectorSearch', 'Claude (visão)', 'Gravar chamado'];
+const STEPS = ['Compor frase', 'Guardar foto (storage)', 'Embed multimodal', '$vectorSearch', 'Claude (visão)', 'Gravar chamado'];
 
 export default function Portal({ state, setState }) {
   const { resultado } = state;
@@ -158,7 +158,7 @@ export default function Portal({ state, setState }) {
           <div className="stack">
             {resultado?.veredito && <VeredictoCard veredito={resultado.veredito} />}
             {resultado?.imagem_url && (
-              <div className="card"><div className="card-title" style={{ marginBottom: 8 }}>Foto do cliente (S3 presigned)</div>
+              <div className="card"><div className="card-title" style={{ marginBottom: 8 }}>Foto do cliente</div>
                 <img src={resultado.imagem_url} alt="defeito" className="foto-full" /></div>
             )}
           </div>
