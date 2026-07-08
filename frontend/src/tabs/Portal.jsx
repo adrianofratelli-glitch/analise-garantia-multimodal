@@ -3,12 +3,13 @@ import Badge from '@leafygreen-ui/badge';
 import Banner from '@leafygreen-ui/banner';
 import Button from '@leafygreen-ui/button';
 import TextInput from '@leafygreen-ui/text-input';
+import IdentidadeCard from '../components/IdentidadeCard.jsx';
 import JsonViewer from '../components/JsonViewer.jsx';
 import PipelineSteps from '../components/PipelineSteps.jsx';
 import VeredictoCard from '../components/VeredictoCard.jsx';
 import { api } from '../api.js';
 
-const STEPS = ['Compor frase', 'Guardar foto (storage)', 'Embed multimodal', '$vectorSearch', 'Claude (visão)', 'Gravar chamado'];
+const STEPS = ['Compor frase', 'Guardar foto (storage)', 'Embed multimodal (Voyage AI)', 'Verificar identidade do produto', 'Busca de precedentes (Atlas)', 'Claude (visão)', 'Gravar chamado'];
 
 export default function Portal({ state, setState }) {
   const { resultado } = state;
@@ -20,6 +21,7 @@ export default function Portal({ state, setState }) {
   const [descricao, setDescricao] = useState('');
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [modo, setModo] = useState('vector');
   const [pipe, setPipe] = useState(STEPS.map(() => 'pending'));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -66,6 +68,7 @@ export default function Portal({ state, setState }) {
     fd.append('numero_pedido', pedido);
     fd.append('sku', produtoSel.sku);
     fd.append('descricao', descricao);
+    fd.append('modo', modo);
     Object.entries(marcados).filter(([, v]) => v).forEach(([k]) => fd.append('checklist', k));
     try {
       const r = await api.analisar(fd);
@@ -135,6 +138,15 @@ export default function Portal({ state, setState }) {
               {preview && <img src={preview} alt="prévia" className="foto-preview" />}
             </div>
             <div style={{ marginTop: 12 }}>
+              <div className="dim" style={{ marginBottom: 6 }}>Recuperação de precedentes:</div>
+              <div className="row">
+                <Button darkMode size="small" variant={modo === 'vector' ? 'primary' : 'default'}
+                  onClick={() => setModo('vector')}>$vectorSearch</Button>
+                <Button darkMode size="small" variant={modo === 'hybrid' ? 'primary' : 'default'}
+                  onClick={() => setModo('hybrid')}>$rankFusion (híbrida)</Button>
+              </div>
+            </div>
+            <div style={{ marginTop: 12 }}>
               <Button darkMode variant="primary" onClick={analisar} disabled={busy || !file}>
                 {busy ? 'Analisando…' : '▶ Analisar defeito'}
               </Button>
@@ -151,11 +163,13 @@ export default function Portal({ state, setState }) {
             {resultado && (
               <div className="dim mono" style={{ marginTop: 10, fontSize: 12 }}>
                 chamado <b>{resultado.numero_chamado}</b> · status em_analise<br />
+                embedding: {resultado.embedding_model} ({resultado.embedding_dim}d)<br />
                 frase: {resultado.frase_analise}
               </div>
             )}
           </div>
           <div className="stack">
+            {resultado?.identidade && <IdentidadeCard identidade={resultado.identidade} />}
             {resultado?.veredito && <VeredictoCard veredito={resultado.veredito} />}
             {resultado?.imagem_url && (
               <div className="card"><div className="card-title" style={{ marginBottom: 8 }}>Foto do cliente</div>
@@ -168,9 +182,19 @@ export default function Portal({ state, setState }) {
       {resultado?.precedentes && (
         <div className="card">
           <div className="card-header">
-            <span className="card-title">Precedentes recuperados ($vectorSearch)</span>
-            <Badge variant="green">{resultado.funnel?.retrieved ?? 0} de {resultado.funnel?.num_candidates} candidatos</Badge>
+            <span className="card-title">
+              Precedentes recuperados ({resultado.funnel?.modo === 'hybrid' ? '$rankFusion' : resultado.funnel?.modo === 'vector_fallback' ? '$vectorSearch — fallback' : '$vectorSearch'})
+            </span>
+            <Badge variant="green">
+              {resultado.funnel?.retrieved ?? 0}
+              {resultado.funnel?.num_candidates ? ` de ${resultado.funnel.num_candidates} candidatos` : ''}
+            </Badge>
           </div>
+          {resultado.funnel?.modo === 'vector_fallback' && (
+            <Banner variant="warning" darkMode style={{ marginBottom: 10 }}>
+              $rankFusion indisponível neste cluster — degradou para $vectorSearch automaticamente.
+            </Banner>
+          )}
           {resultado.precedentes.map((p) => (
             <div key={p._id} className="prec-item">
               <div className="row" style={{ justifyContent: 'space-between' }}>

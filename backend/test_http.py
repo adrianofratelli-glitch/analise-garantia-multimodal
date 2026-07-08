@@ -1,4 +1,4 @@
-"""Teste HTTP síncrono contra o uvicorn em :8000 (valida o servidor real)."""
+"""Teste HTTP síncrono contra o uvicorn em :8100 (valida o servidor real)."""
 
 import sys
 import time
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import httpx
 
-BASE = "http://127.0.0.1:8000"
+BASE = "http://127.0.0.1:8100"
 SEED_IMAGES = Path(__file__).resolve().parents[1] / "seed_images"
 
 

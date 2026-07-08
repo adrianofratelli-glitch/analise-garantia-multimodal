@@ -16,7 +16,7 @@ async function request(path, options = {}) {
       ...options,
     });
   } catch {
-    throw new ApiError('rede', 'Backend não respondeu. O FastAPI está rodando na porta 8000?');
+    throw new ApiError('rede', 'Backend não respondeu. O FastAPI está rodando na porta 8100?');
   }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -32,7 +32,7 @@ async function upload(path, formData) {
   try {
     res = await fetch(path, { method: 'POST', body: formData });
   } catch {
-    throw new ApiError('rede', 'Backend não respondeu. O FastAPI está rodando na porta 8000?');
+    throw new ApiError('rede', 'Backend não respondeu. O FastAPI está rodando na porta 8100?');
   }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {

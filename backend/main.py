@@ -29,13 +29,13 @@ from db import SafeQueryError, catalogo, chamados, get_client, pedidos, safe_que
 from defeitos_catalog import compor_frase, derivar_tipo_defeito
 from llm import MODEL, analisar_veredito
 from storage import upload_imagem
-from voyage import embed_multimodal
+from voyage import EMBED_DIM, MODEL as VOYAGE_MODEL, embed_multimodal
 
 app = FastAPI(title="MM Análise de Garantia")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:5190", "http://127.0.0.1:5190"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -69,6 +69,8 @@ async def health():
     return {
         "ping": "ok",
         "model": MODEL,
+        "embedding_model": VOYAGE_MODEL,
+        "embedding_dim": EMBED_DIM,
         "db": config.DB_NAME,
         "counts": {
             "total": await safe_query(col.count_documents({}, maxTimeMS=config.MAX_TIME_MS)),
@@ -130,6 +132,8 @@ async def analisar(
     produto = await _resolver_produto(numero_pedido, sku)
     categoria = produto["categoria"]
 
+    if imagem.content_type not in ALLOWED_MEDIA:
+        raise SafeQueryError("imagem", f"Formato '{imagem.content_type}' não aceito. Envie JPEG ou PNG.")
     imagem_bytes = await imagem.read()
     if not imagem_bytes:
         raise SafeQueryError("imagem", "Nenhuma imagem recebida.")
@@ -166,6 +170,8 @@ async def analisar(
     except Exception as e:
         raise SafeQueryError("embedding", f"Falha ao gerar o embedding multimodal: {str(e)[:160]}")
 
+    identidade = await rag.verificar_identidade(query_vector, produto["sku"])
+
     if modo == "hybrid":
         precedentes, funnel = await rag.hybrid_search(query_vector, frase, categoria)
     else:
@@ -188,6 +194,7 @@ async def analisar(
         "imagem_cliente_uri": uri,
         "embedding": query_vector,
         "veredito": veredito,
+        "identidade_produto": identidade,
         "resolucao_final": None,
         "status": "em_analise",
         "created_at": datetime.now(timezone.utc),
@@ -201,8 +208,11 @@ async def analisar(
         "frase_analise": frase,
         "imagem_url": imagem_url,
         "veredito": veredito,
+        "identidade": identidade,
         "precedentes": [{k: v for k, v in p.items() if k != "embedding"} for p in precedentes],
         "funnel": funnel,
+        "embedding_model": VOYAGE_MODEL,
+        "embedding_dim": len(query_vector),
     })
 
 

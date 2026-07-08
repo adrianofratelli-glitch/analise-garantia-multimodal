@@ -31,8 +31,10 @@ DB_NAME = os.getenv("MONGODB_DB", "madeira_madeira")
 CHAMADOS_COLL = os.getenv("MONGODB_COLLECTION", "chamados")
 CATALOGO_COLL = os.getenv("MONGODB_CATALOGO_COLLECTION", "catalogo")
 PEDIDOS_COLL = os.getenv("MONGODB_PEDIDOS_COLLECTION", "pedidos")
+CATALOGO_FOTOS_COLL = os.getenv("MONGODB_CATALOGO_FOTOS_COLLECTION", "catalogo_fotos")
 VECTOR_INDEX = os.getenv("VECTOR_INDEX_NAME", "defeitos_vector_index")
 TEXT_INDEX = os.getenv("TEXT_INDEX_NAME", "chamados_text_index")
+CATALOGO_FOTOS_VECTOR_INDEX = os.getenv("CATALOGO_FOTOS_VECTOR_INDEX_NAME", "catalogo_fotos_vector_index")
 MAX_TIME_MS = int(os.getenv("MONGODB_MAX_TIME_MS", "10000"))
 
 # --- Embedding (Voyage multimodal) ---

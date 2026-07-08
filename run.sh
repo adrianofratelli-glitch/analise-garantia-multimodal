@@ -5,12 +5,12 @@ set -e
 ROOT="/Users/adriano.fratelli/Documents/MadeiraMadeira/mm-analise-garantia"
 cd "$ROOT"
 
-# --- backend (FastAPI :8000) ---
-if lsof -ti :8000 >/dev/null 2>&1; then
-  echo "✔ backend já rodando em :8000"
+# --- backend (FastAPI :8100) ---
+if lsof -ti :8100 >/dev/null 2>&1; then
+  echo "✔ backend já rodando em :8100"
 else
-  echo "▶ subindo backend :8000"
-  ( cd backend && nohup ./.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 \
+  echo "▶ subindo backend :8100"
+  ( cd backend && nohup ./.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8100 \
       > /tmp/mm-garantia-backend.log 2>&1 & )
 fi
 
@@ -20,23 +20,23 @@ if [ ! -x frontend/node_modules/.bin/vite ]; then
   ( cd frontend && npm install --legacy-peer-deps )
 fi
 
-# --- frontend (Vite :5173) ---
-if lsof -ti :5173 >/dev/null 2>&1; then
-  echo "✔ frontend já rodando em :5173"
+# --- frontend (Vite :5190) ---
+if lsof -ti :5190 >/dev/null 2>&1; then
+  echo "✔ frontend já rodando em :5190"
 else
-  echo "▶ subindo frontend :5173"
-  ( cd frontend && nohup ./node_modules/.bin/vite --port 5173 --host 127.0.0.1 \
+  echo "▶ subindo frontend :5190"
+  ( cd frontend && nohup ./node_modules/.bin/vite --port 5190 --host 127.0.0.1 \
       > /tmp/mm-garantia-frontend.log 2>&1 & )
 fi
 
 # --- espera ficar pronto e abre o navegador ---
 printf "aguardando subir"
 for _ in $(seq 1 40); do
-  if curl -fsS http://127.0.0.1:5173 >/dev/null 2>&1 \
-     && curl -fsS http://127.0.0.1:8000/api/health >/dev/null 2>&1; then
+  if curl -fsS http://127.0.0.1:5190 >/dev/null 2>&1 \
+     && curl -fsS http://127.0.0.1:8100/api/health >/dev/null 2>&1; then
     echo ""
-    echo "✓ pronto: http://localhost:5173"
-    open http://localhost:5173
+    echo "✓ pronto: http://localhost:5190"
+    open http://localhost:5190
     echo "  logs:  /tmp/mm-garantia-backend.log  ·  /tmp/mm-garantia-frontend.log"
     echo "  parar: image-stop"
     exit 0
