@@ -14,9 +14,54 @@ import json
 import sys
 
 from pymongo import ASCENDING, DESCENDING, MongoClient
+from pymongo.errors import OperationFailure
 from pymongo.operations import SearchIndexModel
 
 import config
+
+# $jsonSchema — governance nativa do MongoDB: mesmo sendo schemaless por
+# padrão, o Atlas valida forma/tipo de documento no servidor sem precisar de
+# camada externa (ORM/Zod/etc). validationAction="warn" pra não travar a demo
+# se um seed antigo não bater 100% — mas o campo aparece em db.getCollectionInfos().
+CHAMADOS_SCHEMA = {
+    "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["numero_chamado", "categoria", "status", "veredito", "embedding"],
+        "properties": {
+            "numero_chamado": {"bsonType": "string"},
+            "categoria": {"bsonType": "string"},
+            "status": {"enum": ["em_analise", "resolvido"]},
+            "embedding": {
+                "bsonType": "array",
+                "minItems": config.EMBEDDING_DIM,
+                "maxItems": config.EMBEDDING_DIM,
+                "items": {"bsonType": "double"},
+            },
+            "veredito": {
+                "bsonType": "object",
+                "required": ["classificacao", "confianca", "revisao_humana"],
+                "properties": {
+                    "classificacao": {
+                        "enum": ["defeito_fabrica", "defeito_transporte", "mau_uso", "inconclusivo"]
+                    },
+                    "confianca": {"bsonType": ["double", "int"], "minimum": 0, "maximum": 1},
+                    "revisao_humana": {"bsonType": "bool"},
+                },
+            },
+        },
+    }
+}
+
+PEDIDOS_SCHEMA = {
+    "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["numero_pedido", "produtos"],
+        "properties": {
+            "numero_pedido": {"bsonType": "string"},
+            "produtos": {"bsonType": "array"},
+        },
+    }
+}
 
 VECTOR_DEF = {
     "fields": [
@@ -26,17 +71,35 @@ VECTOR_DEF = {
     ]
 }
 
+CATALOGO_FOTOS_VECTOR_DEF = {
+    "fields": [
+        {"type": "vector", "path": "embedding", "numDimensions": config.EMBEDDING_DIM, "similarity": "cosine"},
+        {"type": "filter", "path": "sku"},
+    ]
+}
+
 TEXT_DEF = {
     "mappings": {
         "dynamic": False,
         "fields": {
             "descricao_cliente": {"type": "string"},
             "frase_analise": {"type": "string"},
-            "categoria": {"type": "string"},
-            "status": {"type": "string"},
+            # token, não string: categoria/status são enums — exact match via
+            # {"equals": ...}, sem tokenização/stemming (evita falso match).
+            "categoria": {"type": "token"},
+            "status": {"type": "token"},
         },
     }
 }
+
+
+def _apply_validator(db, coll_name, schema):
+    """collMod com $jsonSchema — funciona em collection já existente (seed roda antes)."""
+    try:
+        db.command("collMod", coll_name, validator=schema, validationLevel="moderate", validationAction="warn")
+        print(f"✓ $jsonSchema aplicado em '{coll_name}' (validationAction=warn — não bloqueia, só avisa)")
+    except OperationFailure as e:
+        print(f"⚠ não foi possível aplicar $jsonSchema em '{coll_name}': {str(e)[:120]}")
 
 
 def _regular_indexes(db):
@@ -44,7 +107,8 @@ def _regular_indexes(db):
     db[config.CHAMADOS_COLL].create_index([("numero_chamado", ASCENDING)], name="numero_chamado", unique=True)
     db[config.PEDIDOS_COLL].create_index([("numero_pedido", ASCENDING)], name="numero_pedido", unique=True)
     db[config.CATALOGO_COLL].create_index([("categoria", ASCENDING)], name="categoria", unique=True)
-    print("✓ índices regulares criados (status_created, numero_chamado, numero_pedido, categoria)")
+    db[config.CATALOGO_FOTOS_COLL].create_index([("sku", ASCENDING), ("foto_idx", ASCENDING)], name="sku_foto", unique=True)
+    print("✓ índices regulares criados (status_created, numero_chamado, numero_pedido, categoria, sku_foto)")
 
 
 def _search_index(col, name, definition, kind):
@@ -71,6 +135,9 @@ def main():
     _regular_indexes(db)
     _search_index(db[config.CHAMADOS_COLL], config.VECTOR_INDEX, VECTOR_DEF, "vectorSearch")
     _search_index(db[config.CHAMADOS_COLL], config.TEXT_INDEX, TEXT_DEF, "search")
+    _search_index(db[config.CATALOGO_FOTOS_COLL], config.CATALOGO_FOTOS_VECTOR_INDEX, CATALOGO_FOTOS_VECTOR_DEF, "vectorSearch")
+    _apply_validator(db, config.CHAMADOS_COLL, CHAMADOS_SCHEMA)
+    _apply_validator(db, config.PEDIDOS_COLL, PEDIDOS_SCHEMA)
 
 
 if __name__ == "__main__":

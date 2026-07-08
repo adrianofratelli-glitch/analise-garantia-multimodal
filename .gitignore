@@ -19,3 +19,6 @@ media/
 # playwright
 test-results/
 playwright-report/
+
+# knowledge-graph tooling output (local paths, not part of the app)
+graphify-out/

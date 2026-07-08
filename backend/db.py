@@ -55,6 +55,10 @@ def pedidos():
     return db()[config.PEDIDOS_COLL]
 
 
+def catalogo_fotos():
+    return db()[config.CATALOGO_FOTOS_COLL]
+
+
 class SafeQueryError(Exception):
     """Erro operacional carregando uma mensagem pronta para a UI."""
 

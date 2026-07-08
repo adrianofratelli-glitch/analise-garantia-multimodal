@@ -23,6 +23,8 @@ export default function Revisao({ state, setState }) {
   const [error, setError] = useState(null);
   const [ok, setOk] = useState(null);
 
+  const [live, setLive] = useState(false);
+
   const carregar = async () => {
     setCarregando(true);
     setError(null);
@@ -38,6 +40,16 @@ export default function Revisao({ state, setState }) {
 
   useEffect(() => {
     carregar();
+  }, []);
+
+  // Change Streams (SSE) — fila atualiza sozinha quando um novo chamado chega,
+  // sem polling. Demonstra real-time operacional nativo do MongoDB.
+  useEffect(() => {
+    const es = new EventSource('/api/chamados/stream');
+    es.onopen = () => setLive(true);
+    es.onerror = () => setLive(false);
+    es.onmessage = () => carregar();
+    return () => es.close();
   }, []);
 
   const selecionar = (c) => {
@@ -85,7 +97,10 @@ export default function Revisao({ state, setState }) {
           </div>
           <p className="dim" style={{ marginBottom: 12 }}>
             Chamados em <b>em_analise</b> aguardando confirmacao. Cada resolucao vira
-            precedente recuperavel (flywheel).
+            precedente recuperavel (flywheel).{' '}
+            <Badge variant={live ? 'green' : 'lightgray'}>
+              {live ? '● live — Change Streams' : '○ live indisponivel'}
+            </Badge>
           </p>
           {(pendentes ?? []).length === 0 && (
             <p className="dim">Nenhum chamado pendente. Abra um no Portal de Garantia.</p>
