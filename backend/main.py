@@ -1,4 +1,4 @@
-"""FastAPI — MM Análise de Garantia (PoV MadeiraMadeira).
+"""FastAPI — Análise de Garantia Multimodal.
 
 Fluxo do portal: pedido -> produto -> checklist+descrição -> foto -> análise.
 Caminho B: embedding multimodal MANUAL, imagem em storage local (file://),
@@ -31,7 +31,7 @@ from llm import MODEL, analisar_veredito
 from storage import upload_imagem
 from voyage import EMBED_DIM, MODEL as VOYAGE_MODEL, embed_multimodal
 
-app = FastAPI(title="MM Análise de Garantia")
+app = FastAPI(title="Análise de Garantia Multimodal")
 
 app.add_middleware(
     CORSMiddleware,

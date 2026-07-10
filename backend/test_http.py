@@ -23,7 +23,7 @@ def main():
 
     with httpx.Client(base_url=BASE, timeout=60) as c:
         print("[health]", c.get("/api/health").json())
-        print("[lookup]", c.post("/api/lookup", json={"numero_pedido": "mm-90001"}).json())
+        print("[lookup]", c.post("/api/lookup", json={"numero_pedido": "ped-90001"}).json())
         print("[checklist] itens:", len(c.get("/api/checklist/cadeira").json()["itens"]))
 
         img = (SEED_IMAGES / "cad_01.jpg").read_bytes()
@@ -31,7 +31,7 @@ def main():
             "/api/analisar",
             files={"imagem": ("cad_01.jpg", img, "image/jpeg")},
             data={
-                "numero_pedido": "MM-90001",
+                "numero_pedido": "PED-90001",
                 "sku": "CAD-OFF-PRO",
                 "descricao": "Perna traseira trincada, caixa amassada na entrega.",
                 "checklist": "perna_quebrada",

@@ -98,7 +98,7 @@ export default function Portal({ state, setState }) {
 
         <div className="row" style={{ alignItems: 'flex-end', gap: 12 }}>
           <div style={{ minWidth: 240 }}>
-            <TextInput darkMode label="Número do pedido" placeholder="MM-90001" value={pedido}
+            <TextInput darkMode label="Número do pedido" placeholder="PED-90001" value={pedido}
               onChange={(e) => setPedido(e.target.value)} />
           </div>
           <Button darkMode variant="primary" onClick={buscar} disabled={!pedido.trim()}>Buscar pedido</Button>

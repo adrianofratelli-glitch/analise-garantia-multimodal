@@ -2,7 +2,7 @@
 
 ATENCAO: placeholders NAO tem valor de demo real — sao formas e texto, nao
 fotos reais do produto. Servem so para testar o pipeline (embed + $vectorSearch
-de identidade) antes das fotos reais da MadeiraMadeira chegarem.
+de identidade) antes das fotos reais chegarem.
 
 Uso (a partir de backend/):
     python generate_catalogo_placeholders.py

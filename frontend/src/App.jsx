@@ -48,7 +48,7 @@ export default function App() {
       <nav className="top-nav">
         <div className="nav-inner">
           <span className="nav-logo">
-            <span className="leaf">●</span> MM · Análise de Garantia
+            <span className="leaf">●</span> Análise de Garantia Multimodal
           </span>
           <div className="nav-pills">
             {TABS.map((name, i) => (
@@ -112,7 +112,7 @@ export default function App() {
       </main>
 
       <footer className="app-footer">
-        <p>MongoDB Atlas · madeira_madeira.chamados — $vectorSearch + voyage-multimodal-3.5 (Caminho B)</p>
+        <p>MongoDB Atlas · analise_garantia.chamados — $vectorSearch + voyage-multimodal-3.5 (Caminho B)</p>
       </footer>
     </>
   );

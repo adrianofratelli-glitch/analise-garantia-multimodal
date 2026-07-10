@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# Sobe a aplicação "MM — Análise de Garantia" e abre no navegador.
-# Atalho: digite `image` no terminal (alias no ~/.zshrc).
+# Sobe a aplicação (backend FastAPI + frontend Vite) e abre no navegador.
 set -e
-ROOT="/Users/adriano.fratelli/Documents/MadeiraMadeira/mm-analise-garantia"
-cd "$ROOT"
+cd "$(dirname "$0")"
 
 # --- backend (FastAPI :8100) ---
 if lsof -ti :8100 >/dev/null 2>&1; then
@@ -11,7 +9,7 @@ if lsof -ti :8100 >/dev/null 2>&1; then
 else
   echo "▶ subindo backend :8100"
   ( cd backend && nohup ./.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8100 \
-      > /tmp/mm-garantia-backend.log 2>&1 & )
+      > /tmp/garantia-backend.log 2>&1 & )
 fi
 
 # --- deps do frontend (primeira vez; LeafyGreen exige --legacy-peer-deps) ---
@@ -26,7 +24,7 @@ if lsof -ti :5190 >/dev/null 2>&1; then
 else
   echo "▶ subindo frontend :5190"
   ( cd frontend && nohup ./node_modules/.bin/vite --port 5190 --host 127.0.0.1 \
-      > /tmp/mm-garantia-frontend.log 2>&1 & )
+      > /tmp/garantia-frontend.log 2>&1 & )
 fi
 
 # --- espera ficar pronto e abre o navegador ---
@@ -36,14 +34,13 @@ for _ in $(seq 1 40); do
      && curl -fsS http://127.0.0.1:8100/api/health >/dev/null 2>&1; then
     echo ""
     echo "✓ pronto: http://localhost:5190"
-    open http://localhost:5190
-    echo "  logs:  /tmp/mm-garantia-backend.log  ·  /tmp/mm-garantia-frontend.log"
-    echo "  parar: image-stop"
+    open http://localhost:5190 2>/dev/null || true
+    echo "  logs:  /tmp/garantia-backend.log  ·  /tmp/garantia-frontend.log"
     exit 0
   fi
   printf "."
   sleep 1
 done
 echo ""
-echo "⚠ não respondeu a tempo — veja os logs em /tmp/mm-garantia-*.log"
+echo "⚠ não respondeu a tempo — veja os logs em /tmp/garantia-*.log"
 exit 1

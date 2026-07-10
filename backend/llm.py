@@ -19,7 +19,7 @@ import config
 client = AsyncAnthropic()  # lê ANTHROPIC_API_KEY do ambiente (config carregou o .env)
 MODEL = config.ANTHROPIC_MODEL
 
-SYSTEM = """Voce e um analista de triagem de garantia da MadeiraMadeira.
+SYSTEM = """Voce e um analista de triagem de garantia de uma loja online de moveis e itens para casa.
 A partir da foto do produto com defeito, da descricao do cliente e de chamados
 historicos semelhantes ja resolvidos, classifique a causa PROVAVEL do defeito.
 
