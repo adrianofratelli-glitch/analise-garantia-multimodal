@@ -15,15 +15,18 @@ NUM_CANDIDATES = 100
 LIMIT = 5
 _PROJECT = {"embedding": 0}
 
-# Abaixo disso, a foto do cliente não se parece o suficiente com nenhuma das
-# fotos de referência do SKU — sinal de produto errado/divergente, não de
-# defeito (embedding multimodal mede semelhança semântica, não diff de pixel).
-#
-# Calibrado com fotos reais de móveis (não placeholder): mesmo produto fica em
-# ~0.92-0.94, produto errado (mesma categoria ou não) fica em ~0.79-0.85 — o
-# corte em 0.88 separa os dois grupos com folga nos dois lados. Se o catálogo
-# mudar de domínio (não for mais móveis), vale re-medir antes de confiar nele.
-IDENTIDADE_THRESHOLD = 0.88
+# Um threshold absoluto sozinho é frágil aqui: fotos de produto em estúdio
+# (fundo branco, mesma iluminação) fazem QUALQUER par de móveis pontuar alto
+# no embedding multimodal — a métrica captura "é foto de produto de mobília",
+# não a identidade fina do item. Uma cadeira de plástico contra o SKU de uma
+# cadeira gamer já pontuou 0.83, perigosamente perto do range "mesmo produto"
+# (~0.92-0.94) medido antes. Por isso o sinal principal agora é RELATIVO: o
+# SKU reivindicado precisa ser o melhor match entre TODOS os SKUs do catálogo
+# (ou empatar dentro de uma margem pequena) — não basta "parecido o bastante"
+# no vácuo. O piso absoluto abaixo é só um backstop pro caso raro de o produto
+# não ter nenhum parente próximo no catálogo (nem o certo, nem nenhum outro).
+IDENTIDADE_THRESHOLD = 0.80
+IDENTIDADE_MARGEM_EMPATE = 0.01
 
 
 async def vector_search(query_vector: list[float], categoria: str) -> tuple[list[dict], dict]:
@@ -58,12 +61,19 @@ async def vector_search(query_vector: list[float], categoria: str) -> tuple[list
 
 
 async def verificar_identidade(query_vector: list[float], sku: str) -> dict:
-    """$vectorSearch da foto do cliente contra as fotos de referência do SKU
-    (catalogo_fotos) — responde "essa foto é do produto certo?", não "tem
-    defeito?" (isso continua sendo papel do Claude com o precedente histórico).
+    """$vectorSearch da foto do cliente contra TODAS as fotos de referência do
+    catálogo (catalogo_fotos, sem filtro de sku) — responde "essa foto é do
+    produto certo?", não "tem defeito?" (isso continua sendo papel do Claude
+    com o precedente histórico).
 
-    Retorna {sku, score, fotos_comparadas, abaixo_threshold}. Se o SKU não tem
-    fotos de referência seedadas, retorna score=None (não bloqueia o fluxo).
+    O sinal é RELATIVO: o SKU reivindicado precisa ser o melhor match entre
+    todos os SKUs (ou empatar dentro de IDENTIDADE_MARGEM_EMPATE) — comparar
+    só contra o próprio SKU não pega o caso de "parece com QUALQUER móvel
+    fotografado em estúdio". Um piso absoluto (IDENTIDADE_THRESHOLD) cobre o
+    caso do produto não ter parente nenhum no catálogo.
+
+    Retorna {sku, score, top_sku, top_score, fotos_comparadas, abaixo_threshold}.
+    Se o catálogo não tem fotos seedadas, retorna score=None (não bloqueia o fluxo).
     """
     pipeline = [
         {
@@ -71,24 +81,36 @@ async def verificar_identidade(query_vector: list[float], sku: str) -> dict:
                 "index": config.CATALOGO_FOTOS_VECTOR_INDEX,
                 "path": "embedding",
                 "queryVector": query_vector,
-                "numCandidates": 20,
-                "limit": 4,
-                "filter": {"sku": sku},
+                "numCandidates": 150,
+                "limit": 30,
             }
         },
         {"$addFields": {"score": {"$meta": "vectorSearchScore"}}},
         {"$project": {"embedding": 0}},
     ]
     cursor = catalogo_fotos().aggregate(pipeline, maxTimeMS=config.MAX_TIME_MS)
-    docs = await safe_query(cursor.to_list(length=4))
+    docs = await safe_query(cursor.to_list(length=30))
     if not docs:
-        return {"sku": sku, "score": None, "fotos_comparadas": 0, "abaixo_threshold": False}
-    melhor = max(d["score"] for d in docs)
+        return {"sku": sku, "score": None, "top_sku": None, "top_score": None, "fotos_comparadas": 0, "abaixo_threshold": False}
+
+    melhor_por_sku: dict[str, float] = {}
+    for d in docs:
+        melhor_por_sku[d["sku"]] = max(melhor_por_sku.get(d["sku"], 0.0), d["score"])
+
+    score_sku = melhor_por_sku.get(sku, 0.0)
+    top_sku, top_score = max(melhor_por_sku.items(), key=lambda kv: kv[1])
+
+    eh_o_melhor_ou_empate = score_sku >= top_score - IDENTIDADE_MARGEM_EMPATE
+    acima_do_piso = score_sku >= IDENTIDADE_THRESHOLD
+    aprovado = eh_o_melhor_ou_empate and acima_do_piso
+
     return {
         "sku": sku,
-        "score": melhor,
+        "score": score_sku,
+        "top_sku": top_sku,
+        "top_score": top_score,
         "fotos_comparadas": len(docs),
-        "abaixo_threshold": melhor < IDENTIDADE_THRESHOLD,
+        "abaixo_threshold": not aprovado,
     }
 
 
