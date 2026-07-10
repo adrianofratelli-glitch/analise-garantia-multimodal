@@ -6,10 +6,14 @@ e envia uma foto; a IA classifica a causa provável (**defeito de fábrica /
 transporte / mau uso / inconclusivo**) usando precedentes históricos recuperados
 por busca vetorial multimodal — sempre sujeita a revisão humana (CDC).
 
-Antes de classificar o defeito, a foto do cliente também é comparada com as
-fotos de referência do catálogo daquele SKU (embedding multimodal Voyage AI) —
-um sinal separado de "essa foto é do produto certo?", útil para pegar upload
-errado ou divergente antes mesmo da triagem de causa.
+Antes de classificar o defeito, a foto do cliente também é comparada (embedding
+multimodal Voyage AI) contra as fotos de referência de **todo** o catálogo, não
+só do SKU do pedido — o sinal é relativo: o produto do pedido precisa ser o
+melhor match entre todos, não só "parecido o bastante" sozinho. Fotos de
+produto em estúdio pontuam alto entre si por natureza (mesmo fundo, mesma
+iluminação), então um threshold absoluto sozinho deixa passar produto errado
+com facilidade — comparar contra o catálogo inteiro é o que realmente separa
+"é esse produto" de "é um produto qualquer parecido".
 
 ## MongoDB como motor de todas as camadas
 
