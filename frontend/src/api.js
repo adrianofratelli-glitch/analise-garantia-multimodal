@@ -44,6 +44,7 @@ async function upload(path, formData) {
 
 export const api = {
   health: () => request('/api/health'),
+  pedidos: () => request('/api/pedidos'),
   lookup: (numero_pedido) =>
     request('/api/lookup', { method: 'POST', body: JSON.stringify({ numero_pedido }) }),
   checklist: (categoria) => request(`/api/checklist/${categoria}`),

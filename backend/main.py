@@ -81,6 +81,13 @@ async def health():
     }
 
 
+@app.get("/api/pedidos")
+async def listar_pedidos():
+    cursor = pedidos().find({}, {"_id": 0}, max_time_ms=config.MAX_TIME_MS).sort("numero_pedido", 1)
+    docs = await safe_query(cursor.to_list(length=200))
+    return {"pedidos": docs}
+
+
 class LookupBody(BaseModel):
     numero_pedido: str
 

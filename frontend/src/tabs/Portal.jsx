@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Badge from '@leafygreen-ui/badge';
 import Banner from '@leafygreen-ui/banner';
 import Button from '@leafygreen-ui/button';
+import { Option, Select } from '@leafygreen-ui/select';
 import TextInput from '@leafygreen-ui/text-input';
 import IdentidadeCard from '../components/IdentidadeCard.jsx';
 import JsonViewer from '../components/JsonViewer.jsx';
@@ -14,6 +15,8 @@ const STEPS = ['Compor frase', 'Guardar foto (storage)', 'Embed multimodal (Voya
 export default function Portal({ state, setState }) {
   const { resultado } = state;
   const [pedido, setPedido] = useState('');
+  const [pedidosDisponiveis, setPedidosDisponiveis] = useState([]);
+  const [carregandoPedidos, setCarregandoPedidos] = useState(true);
   const [produtos, setProdutos] = useState([]);
   const [produtoSel, setProdutoSel] = useState(null);
   const [itens, setItens] = useState([]);
@@ -28,10 +31,17 @@ export default function Portal({ state, setState }) {
 
   const setStep = (step) => setState((s) => ({ ...s, step }));
 
-  const buscar = async () => {
+  useEffect(() => {
+    api.pedidos()
+      .then((r) => setPedidosDisponiveis(r.pedidos))
+      .catch((e) => setError(e.message))
+      .finally(() => setCarregandoPedidos(false));
+  }, []);
+
+  const buscar = async (numero) => {
     setError(null);
     try {
-      const r = await api.lookup(pedido);
+      const r = await api.lookup(numero);
       setProdutos(r.produtos);
       setPedido(r.numero_pedido);
       setStep(1);
@@ -97,11 +107,21 @@ export default function Portal({ state, setState }) {
         <div className="card-title" style={{ marginBottom: 12 }}>Portal do cliente — abrir chamado de garantia</div>
 
         <div className="row" style={{ alignItems: 'flex-end', gap: 12 }}>
-          <div style={{ minWidth: 240 }}>
-            <TextInput darkMode label="Número do pedido" placeholder="PED-90001" value={pedido}
-              onChange={(e) => setPedido(e.target.value)} />
+          <div style={{ minWidth: 280 }}>
+            <Select
+              darkMode
+              label="Número do pedido"
+              placeholder={carregandoPedidos ? 'Carregando pedidos…' : 'Selecione um pedido'}
+              value={pedido}
+              onChange={(numero) => buscar(numero)}
+            >
+              {pedidosDisponiveis.map((p) => (
+                <Option key={p.numero_pedido} value={p.numero_pedido}>
+                  {p.numero_pedido} · {p.produtos.map((prod) => prod.nome).join(', ')}
+                </Option>
+              ))}
+            </Select>
           </div>
-          <Button darkMode variant="primary" onClick={buscar} disabled={!pedido.trim()}>Buscar pedido</Button>
           {resultado && <Button darkMode onClick={reiniciar}>Novo chamado</Button>}
         </div>
 
