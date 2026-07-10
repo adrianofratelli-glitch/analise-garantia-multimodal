@@ -8,7 +8,7 @@ camadas". Idempotente (replace_one upsert).
 """
 
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pymongo import MongoClient
 
@@ -23,7 +23,7 @@ def main():
     c = MongoClient(config.MONGODB_URI, serverSelectionTimeoutMS=10_000)
     c.admin.command("ping")
     db = c[config.DB_NAME]
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     ped = db[config.PEDIDOS_COLL]
     for numero, produtos in PEDIDOS_SEED.items():

@@ -16,8 +16,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 try:
     from seed_data import CHAMADOS_SEED
-except ImportError:
-    raise SystemExit("Rode a partir de backend/ (precisa importar seed_data.py).")
+except ImportError as e:
+    raise SystemExit("Rode a partir de backend/ (precisa importar seed_data.py).") from e
 
 OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "seed_images")
 W, H = 800, 600

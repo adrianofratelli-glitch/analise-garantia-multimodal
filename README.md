@@ -61,6 +61,19 @@ python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 cd backend && ./.venv/bin/python test_http.py
 ```
 
+## Testes e lint
+
+```bash
+cd backend
+./.venv/bin/pip install -r requirements-dev.txt
+
+./.venv/bin/pytest       # testes unitários (lógica pura, sem Atlas/rede)
+./.venv/bin/ruff check .  # lint
+```
+
+`test_http.py` continua sendo o smoke test do servidor real (precisa do backend
+no ar e do Atlas seedado) — `pytest` cobre a lógica que não depende de rede.
+
 ## Endpoints
 | Método | Rota | O quê |
 |---|---|---|

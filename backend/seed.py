@@ -13,7 +13,7 @@ regulares) são criados pelo setup_indexes.py.
 """
 
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from PIL import Image
@@ -25,7 +25,7 @@ from seed_data import CHAMADOS_SEED
 from storage import upload_imagem
 from voyage import embed_multimodal
 
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 SEED_IMAGES = Path(__file__).resolve().parents[1] / "seed_images"
 
 

@@ -72,16 +72,16 @@ async def safe_query(awaitable):
     """Await numa operação Motor, mapeando falhas para mensagens amigáveis."""
     try:
         return await awaitable
-    except (ExecutionTimeout, NetworkTimeout, WTimeoutError):
+    except (ExecutionTimeout, NetworkTimeout, WTimeoutError) as e:
         raise SafeQueryError(
             "timeout",
             "A consulta excedeu o tempo limite (maxTimeMS). O cluster pode estar sob carga — tente novamente.",
-        )
-    except ServerSelectionTimeoutError:
+        ) from e
+    except ServerSelectionTimeoutError as e:
         raise SafeQueryError(
             "conexao",
             "Não foi possível alcançar o cluster Atlas. Verifique a MONGODB_URI e o IP Access List.",
-        )
+        ) from e
     except OperationFailure as e:
         msg = str(e).lower()
         if "mongot" in msg or "search index" in msg or "$vectorsearch" in msg:
@@ -89,12 +89,12 @@ async def safe_query(awaitable):
                 "search",
                 "O Atlas Search (mongot) está indisponível ou o índice vetorial não foi encontrado. "
                 f"Confira o índice '{config.VECTOR_INDEX}' em {config.DB_NAME}.{config.CHAMADOS_COLL}.",
-            )
+            ) from e
         if "index not found" in msg or "no such index" in msg:
-            raise SafeQueryError("indice", "Índice necessário não encontrado nesta collection.")
+            raise SafeQueryError("indice", "Índice necessário não encontrado nesta collection.") from e
         raise SafeQueryError(
             "operacao",
             f"Operação rejeitada pelo MongoDB: {e.details.get('errmsg', str(e)) if e.details else e}",
-        )
-    except ConnectionFailure:
-        raise SafeQueryError("conexao", "Conexão com o cluster perdida. Tente novamente em alguns segundos.")
+        ) from e
+    except ConnectionFailure as e:
+        raise SafeQueryError("conexao", "Conexão com o cluster perdida. Tente novamente em alguns segundos.") from e
