@@ -18,7 +18,12 @@ _PROJECT = {"embedding": 0}
 # Abaixo disso, a foto do cliente não se parece o suficiente com nenhuma das
 # fotos de referência do SKU — sinal de produto errado/divergente, não de
 # defeito (embedding multimodal mede semelhança semântica, não diff de pixel).
-IDENTIDADE_THRESHOLD = 0.55
+#
+# Calibrado com fotos reais de móveis (não placeholder): mesmo produto fica em
+# ~0.92-0.94, produto errado (mesma categoria ou não) fica em ~0.79-0.85 — o
+# corte em 0.88 separa os dois grupos com folga nos dois lados. Se o catálogo
+# mudar de domínio (não for mais móveis), vale re-medir antes de confiar nele.
+IDENTIDADE_THRESHOLD = 0.88
 
 
 async def vector_search(query_vector: list[float], categoria: str) -> tuple[list[dict], dict]:

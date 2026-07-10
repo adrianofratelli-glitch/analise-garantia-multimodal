@@ -15,6 +15,10 @@ dist/
 # imagens (storage local do PoV)
 media/
 
+# fotos reais de catálogo (copyright do fabricante/varejista — nunca commitar).
+# rode generate_catalogo_placeholders.py pra ter placeholders sintéticos aqui.
+seed_images/catalogo/
+
 # misc
 .DS_Store
 
