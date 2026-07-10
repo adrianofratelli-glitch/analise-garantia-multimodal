@@ -27,7 +27,7 @@ if _ENV_PATH:
 
 # --- MongoDB ---
 MONGODB_URI = os.getenv("MONGODB_URI")
-DB_NAME = os.getenv("MONGODB_DB", "madeira_madeira")
+DB_NAME = os.getenv("MONGODB_DB", "analise_garantia")
 CHAMADOS_COLL = os.getenv("MONGODB_COLLECTION", "chamados")
 CATALOGO_COLL = os.getenv("MONGODB_CATALOGO_COLLECTION", "catalogo")
 PEDIDOS_COLL = os.getenv("MONGODB_PEDIDOS_COLLECTION", "pedidos")

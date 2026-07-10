@@ -1,4 +1,4 @@
-"""Cria os índices em madeira_madeira.chamados (+ pedidos/catalogo).
+"""Cria os índices em <DB>.chamados (+ pedidos/catalogo).
 
 - Regulares: acelera as queries operacionais (status/created_at, lookups).
 - Vetorial (Atlas Vector Search): para o $vectorSearch.

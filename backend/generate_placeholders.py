@@ -2,7 +2,7 @@
 
 ATENCAO: placeholders NAO tem valor de demo de cliente — sao formas e texto,
 nao defeitos reais. Servem so para testar S3 + embed multimodal + $vectorSearch
-+ Claude enquanto as fotos de catalogo da MadeiraMadeira nao chegam. Substitua
++ Claude enquanto as fotos de catalogo da loja nao chegam. Substitua
 por imagens reais (mesmos nomes de arquivo) antes de qualquer apresentacao.
 
 Uso (a partir de backend/):

@@ -1,9 +1,15 @@
-# MM — Análise de Garantia (PoV MadeiraMadeira)
+# Análise de Garantia Multimodal
 
-Triagem de defeitos de produto com IA: o cliente informa o pedido, marca o
-checklist, descreve e envia uma foto; a IA classifica a causa provável
-(**defeito de fábrica / transporte / mau uso / inconclusivo**) usando precedentes
-históricos recuperados por busca vetorial — sempre sujeita a revisão humana (CDC).
+PoV de triagem de defeitos de produto com IA, pensada para qualquer loja que
+venda produtos físicos: o cliente informa o pedido, marca o checklist, descreve
+e envia uma foto; a IA classifica a causa provável (**defeito de fábrica /
+transporte / mau uso / inconclusivo**) usando precedentes históricos recuperados
+por busca vetorial multimodal — sempre sujeita a revisão humana (CDC).
+
+Antes de classificar o defeito, a foto do cliente também é comparada com as
+fotos de referência do catálogo daquele SKU (embedding multimodal Voyage AI) —
+um sinal separado de "essa foto é do produto certo?", útil para pegar upload
+errado ou divergente antes mesmo da triagem de causa.
 
 ## MongoDB como motor de todas as camadas
 
@@ -12,10 +18,12 @@ históricos recuperados por busca vetorial — sempre sujeita a revisão humana 
 | Pedidos (lookup) | collection **`pedidos`** |
 | Catálogo de defeitos (checklist) | collection **`catalogo`** |
 | Chamados + veredito + embedding | collection **`chamados`** |
+| Fotos de referência do catálogo (verificação de identidade) | collection **`catalogo_fotos`** |
 | Busca semântica | **Atlas Vector Search** (`$vectorSearch`, índice `defeitos_vector_index`) |
 | Busca híbrida | **`$rankFusion`** (vetorial + Atlas Search full-text `chamados_text_index`) |
 | Fila em tempo real | **Change Streams** (SSE) |
 | Analytics | **Aggregation Pipeline** (pronto para Atlas Charts) |
+| Governança de schema | **`$jsonSchema`** validator (`chamados`, `pedidos`) |
 
 As imagens (blobs) ficam **fora** do MongoDB — padrão correto de blob storage.
 No PoV ficam em disco local (`backend/media/`, servidas pelo FastAPI); em produção
@@ -35,9 +43,14 @@ cd backend
 python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 
 # popular o MongoDB (lê o .env)
-./.venv/bin/python seed_meta.py      # pedidos + catalogo
-./.venv/bin/python seed.py           # 15 chamados resolvidos (embeda as imagens)
-./.venv/bin/python setup_indexes.py  # índices: regulares + vetorial + texto
+./.venv/bin/python seed_meta.py            # pedidos + catalogo
+./.venv/bin/python seed.py                 # 15 chamados resolvidos (embeda as imagens)
+./.venv/bin/python seed_catalogo_fotos.py  # 4 fotos de referência por SKU (verificação de identidade)
+./.venv/bin/python setup_indexes.py        # índices: regulares + vetorial + texto + $jsonSchema
+
+# opcional: gerar fotos placeholder antes de ter as fotos reais do catálogo
+./.venv/bin/python generate_placeholders.py
+./.venv/bin/python generate_catalogo_placeholders.py
 ```
 
 ## Rodar
