@@ -11,7 +11,7 @@ checklist LEEM do banco (não mais de dicts hardcoded). Erros -> SafeQueryError 
 
 import io
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from bson import ObjectId
@@ -29,7 +29,8 @@ from db import SafeQueryError, catalogo, chamados, get_client, pedidos, safe_que
 from defeitos_catalog import compor_frase, derivar_tipo_defeito
 from llm import MODEL, analisar_veredito
 from storage import upload_imagem
-from voyage import EMBED_DIM, MODEL as VOYAGE_MODEL, embed_multimodal
+from voyage import EMBED_DIM, embed_multimodal
+from voyage import MODEL as VOYAGE_MODEL
 
 app = FastAPI(title="Análise de Garantia Multimodal")
 
@@ -142,8 +143,8 @@ async def analisar(
         raise SafeQueryError("imagem", f"Imagem maior que o limite de {mb} MB.")
     try:
         pil = Image.open(io.BytesIO(imagem_bytes)).convert("RGB")
-    except (UnidentifiedImageError, OSError):
-        raise SafeQueryError("imagem", "Arquivo enviado não é uma imagem válida.")
+    except (UnidentifiedImageError, OSError) as e:
+        raise SafeQueryError("imagem", "Arquivo enviado não é uma imagem válida.") from e
     # Normaliza TUDO para JPEG: garante que o media_type bate com os bytes e que o
     # formato é sempre suportado pelo Claude (evita 400 com PNG/WebP/content-type
     # divergente). A mesma imagem normalizada vai pro storage, Voyage e Claude.
@@ -161,14 +162,14 @@ async def analisar(
     frase = compor_frase(chamado)
     tabela = await _tabela_catalogo(categoria)
 
-    numero_chamado = f"CHM-{datetime.now(timezone.utc).year}-{uuid4().hex[:6].upper()}"
+    numero_chamado = f"CHM-{datetime.now(UTC).year}-{uuid4().hex[:6].upper()}"
     key = f"chamados/{numero_chamado}/foto.jpg"
     uri, imagem_url = await run_in_threadpool(upload_imagem, imagem_jpeg, key, media_type)
 
     try:
         query_vector = await run_in_threadpool(embed_multimodal, frase, pil, "query")
     except Exception as e:
-        raise SafeQueryError("embedding", f"Falha ao gerar o embedding multimodal: {str(e)[:160]}")
+        raise SafeQueryError("embedding", f"Falha ao gerar o embedding multimodal: {str(e)[:160]}") from e
 
     identidade = await rag.verificar_identidade(query_vector, produto["sku"])
 
@@ -180,7 +181,7 @@ async def analisar(
     try:
         veredito = await analisar_veredito(imagem_jpeg, media_type, frase, precedentes)
     except Exception as e:
-        raise SafeQueryError("modelo", f"Falha ao consultar o Claude: {str(e)[:160]}")
+        raise SafeQueryError("modelo", f"Falha ao consultar o Claude: {str(e)[:160]}") from e
 
     doc = {
         "numero_chamado": numero_chamado,
@@ -197,7 +198,7 @@ async def analisar(
         "identidade_produto": identidade,
         "resolucao_final": None,
         "status": "em_analise",
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
     await safe_query(chamados().insert_one(doc))
 
@@ -238,7 +239,7 @@ async def revisar(body: RevisarBody):
                 "resolucao_final": body.resolucao_final,
                 "status": "resolvido",
                 "veredito.revisao_humana": True,
-                "revisado_at": datetime.now(timezone.utc),
+                "revisado_at": datetime.now(UTC),
             }},
         )
     )
