@@ -134,7 +134,7 @@ export default function Portal({ state, setState }) {
                 value={descricao} onChange={(e) => setDescricao(e.target.value)} />
             </div>
             <div style={{ marginTop: 12 }} className="row">
-              <input type="file" accept="image/*" onChange={onFile} />
+              <input type="file" accept="image/jpeg,image/png,image/jpg,.jpg,.jpeg,.png" onChange={onFile} />
               {preview && <img src={preview} alt="prévia" className="foto-preview" />}
             </div>
             <div style={{ marginTop: 12 }}>

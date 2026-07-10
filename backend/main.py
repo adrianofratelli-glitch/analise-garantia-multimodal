@@ -45,7 +45,7 @@ app.add_middleware(
 config.MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 app.mount(config.MEDIA_URL_PREFIX, StaticFiles(directory=str(config.MEDIA_ROOT)), name="media")
 
-ALLOWED_MEDIA = {"image/jpeg", "image/png"}
+ALLOWED_MEDIA = {"image/jpeg", "image/jpg", "image/png"}
 
 
 @app.exception_handler(SafeQueryError)
