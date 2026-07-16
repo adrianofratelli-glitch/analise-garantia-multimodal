@@ -11,6 +11,8 @@ checklist LEEM do banco (não mais de dicts hardcoded). Erros -> SafeQueryError 
 
 import io
 import json
+import logging
+import time
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -24,6 +26,7 @@ from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 
 import config
+import observability
 import rag
 from db import SafeQueryError, catalogo, chamados, get_client, pedidos, safe_query
 from defeitos_catalog import compor_frase, derivar_tipo_defeito
@@ -31,6 +34,9 @@ from llm import MODEL, analisar_veredito
 from storage import upload_imagem
 from voyage import EMBED_DIM, embed_multimodal
 from voyage import MODEL as VOYAGE_MODEL
+
+observability.setup_logging()
+logger = logging.getLogger("mm_garantia")
 
 app = FastAPI(title="Análise de Garantia Multimodal")
 
@@ -40,6 +46,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def _request_observability(request: Request, call_next):
+    """request_id on every response + per-route latency/error counters at /api/metrics."""
+    request_id = request.headers.get("x-request-id") or uuid4().hex[:16]
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        observability.metrics.observe(request.url.path, 500, (time.perf_counter() - start) * 1000)
+        logger.exception("unhandled error request_id=%s path=%s", request_id, request.url.path)
+        raise
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    observability.metrics.observe(request.url.path, response.status_code, elapsed_ms)
+    response.headers["X-Request-Id"] = request_id
+    return response
+
+
+@app.get("/api/metrics")
+async def api_metrics():
+    """In-process counters: requests/errors/latency per route + business counters."""
+    return observability.metrics.snapshot()
 
 # Imagens servidas localmente (PoV). Em prod, trocar storage.py por S3 + CDN.
 config.MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
@@ -176,6 +205,7 @@ async def analisar(
     try:
         query_vector = await run_in_threadpool(embed_multimodal, frase, pil, "query")
     except Exception as e:
+        logger.exception("multimodal embedding failed numero_pedido=%s", numero_pedido)
         raise SafeQueryError("embedding", f"Falha ao gerar o embedding multimodal: {str(e)[:160]}") from e
 
     identidade = await rag.verificar_identidade(query_vector, produto["sku"])
@@ -188,6 +218,7 @@ async def analisar(
     try:
         veredito = await analisar_veredito(imagem_jpeg, media_type, frase, precedentes)
     except Exception as e:
+        logger.exception("Claude verdict call failed numero_pedido=%s", numero_pedido)
         raise SafeQueryError("modelo", f"Falha ao consultar o Claude: {str(e)[:160]}") from e
 
     doc = {
@@ -306,6 +337,7 @@ async def chamados_stream():
                     }
                     yield f"data: {json.dumps(payload, default=str)}\n\n"
         except Exception as e:  # change streams exigem replica set (Atlas tem)
+            logger.exception("change stream failed")
             yield f"event: error\ndata: {json.dumps({'message': str(e)[:200]})}\n\n"
 
     return StreamingResponse(_gen(), media_type="text/event-stream")
