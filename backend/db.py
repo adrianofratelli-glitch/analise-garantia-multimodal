@@ -5,6 +5,8 @@ Toda leitura passa por maxTimeMS; erros operacionais viram SafeQueryError com
 mensagem pronta para a UI (Banner), nunca um stack trace.
 """
 
+import logging
+
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import (
     ConnectionFailure,
@@ -16,6 +18,8 @@ from pymongo.errors import (
 )
 
 import config
+
+logger = logging.getLogger("mm_garantia.db")
 
 MAX_TIME_MS = config.MAX_TIME_MS
 
@@ -73,16 +77,19 @@ async def safe_query(awaitable):
     try:
         return await awaitable
     except (ExecutionTimeout, NetworkTimeout, WTimeoutError) as e:
+        logger.exception("query timeout")
         raise SafeQueryError(
             "timeout",
             "A consulta excedeu o tempo limite (maxTimeMS). O cluster pode estar sob carga — tente novamente.",
         ) from e
     except ServerSelectionTimeoutError as e:
+        logger.exception("server selection failed")
         raise SafeQueryError(
             "conexao",
             "Não foi possível alcançar o cluster Atlas. Verifique a MONGODB_URI e o IP Access List.",
         ) from e
     except OperationFailure as e:
+        logger.exception("operation failure")
         msg = str(e).lower()
         if "mongot" in msg or "search index" in msg or "$vectorsearch" in msg:
             raise SafeQueryError(
@@ -97,4 +104,5 @@ async def safe_query(awaitable):
             f"Operação rejeitada pelo MongoDB: {e.details.get('errmsg', str(e)) if e.details else e}",
         ) from e
     except ConnectionFailure as e:
+        logger.exception("connection failure")
         raise SafeQueryError("conexao", "Conexão com o cluster perdida. Tente novamente em alguns segundos.") from e

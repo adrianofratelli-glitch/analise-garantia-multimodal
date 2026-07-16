@@ -28,3 +28,7 @@ playwright-report/
 
 # knowledge-graph tooling output (local paths, not part of the app)
 graphify-out/
+
+# internal-only presentation scripts — not part of the app, never publish
+docs/PoV-Roteiro-Apresentacao-PT.pdf
+docs/PoV-Presentation-Script-EN.pdf
