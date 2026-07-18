@@ -12,6 +12,7 @@ regulares) são criados pelo setup_indexes.py.
     python seed.py
 """
 
+import io
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -38,7 +39,12 @@ def montar_documento(item: dict) -> dict:
 
     with Image.open(caminho) as img:
         imagem = img.convert("RGB")
-        imagem_bytes = caminho.read_bytes()
+        # Normaliza para JPEG (mesmo contrato do runtime em main.py): os bytes
+        # gravados no storage devem ser exatamente os bytes usados no embedding,
+        # não os bytes originais do arquivo (que podem ser PNG/WebP/etc).
+        _buf = io.BytesIO()
+        imagem.save(_buf, format="JPEG", quality=90)
+        imagem_bytes = _buf.getvalue()
         uri, _ = upload_imagem(imagem_bytes, f"seed/{item['numero_chamado']}/{arquivo}", "image/jpeg")
         embedding = embed_multimodal(frase, imagem, input_type="document")
 

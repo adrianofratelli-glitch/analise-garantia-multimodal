@@ -6,7 +6,9 @@ cd "$(dirname "$0")"
 # backend — only start it if port 8100 is free
 if ! lsof -ti :8100 >/dev/null 2>&1; then
   echo "▶ backend FastAPI :8100"
-  (cd backend && .venv/bin/uvicorn main:app --port 8100 &)
+  # --workers 1 explícito: métricas em processo e o change stream SSE assumem
+  # processo único; múltiplos workers dividiriam contadores e duplicariam streams.
+  (cd backend && .venv/bin/uvicorn main:app --port 8100 --workers 1 &)
   sleep 2
 else
   echo "✔ backend already running on :8100"
