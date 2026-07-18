@@ -24,7 +24,7 @@ export default function Portal({ state, setState }) {
   const [descricao, setDescricao] = useState('');
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
-  const [modo, setModo] = useState('vector');
+  const [modo, setModo] = useState('hybrid');
   const [pipe, setPipe] = useState(STEPS.map(() => 'pending'));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -209,6 +209,11 @@ export default function Portal({ state, setState }) {
               {resultado.funnel?.retrieved ?? 0}
               {resultado.funnel?.num_candidates ? ` de ${resultado.funnel.num_candidates} candidatos` : ''}
             </Badge>
+            {resultado.funnel?.pesos && (
+              <Badge variant="blue">
+                pesos: {Math.round(resultado.funnel.pesos.vetorial * 100)}% vetorial · {Math.round(resultado.funnel.pesos.textual * 100)}% textual
+              </Badge>
+            )}
           </div>
           {resultado.funnel?.modo === 'vector_fallback' && (
             <Banner variant="warning" darkMode style={{ marginBottom: 10 }}>

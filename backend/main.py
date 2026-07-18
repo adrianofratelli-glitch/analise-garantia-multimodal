@@ -9,6 +9,7 @@ MongoDB como motor: pedidos, catálogo e chamados são collections; lookup e
 checklist LEEM do banco (não mais de dicts hardcoded). Erros -> SafeQueryError -> Banner.
 """
 
+import asyncio
 import io
 import json
 import logging
@@ -102,11 +103,23 @@ async def health():
         "embedding_model": VOYAGE_MODEL,
         "embedding_dim": EMBED_DIM,
         "db": config.DB_NAME,
-        "counts": {
-            "total": await safe_query(col.count_documents({}, maxTimeMS=config.MAX_TIME_MS)),
-            "resolvido": await safe_query(col.count_documents({"status": "resolvido"}, maxTimeMS=config.MAX_TIME_MS)),
-            "em_analise": await safe_query(col.count_documents({"status": "em_analise"}, maxTimeMS=config.MAX_TIME_MS)),
-        },
+        # Um único $group substitui três count_documents (3 scans → 1).
+        "counts": await _counts_por_status(col),
+    }
+
+
+async def _counts_por_status(col) -> dict:
+    rows = await safe_query(
+        col.aggregate(
+            [{"$group": {"_id": "$status", "n": {"$sum": 1}}}],
+            maxTimeMS=config.MAX_TIME_MS,
+        ).to_list(length=20)
+    )
+    por_status = {r["_id"]: r["n"] for r in rows}
+    return {
+        "total": sum(por_status.values()),
+        "resolvido": por_status.get("resolvido", 0),
+        "em_analise": por_status.get("em_analise", 0),
     }
 
 
@@ -127,7 +140,7 @@ async def lookup(body: LookupBody):
     doc = await safe_query(pedidos().find_one({"numero_pedido": numero}, {"_id": 0}, max_time_ms=config.MAX_TIME_MS))
     if not doc:
         disponiveis = await safe_query(
-            pedidos().distinct("numero_pedido")
+            pedidos().distinct("numero_pedido", maxTimeMS=config.MAX_TIME_MS)
         )
         raise SafeQueryError(
             "config",
@@ -184,6 +197,9 @@ async def analisar(
     # Normaliza TUDO para JPEG: garante que o media_type bate com os bytes e que o
     # formato é sempre suportado pelo Claude (evita 400 com PNG/WebP/content-type
     # divergente). A mesma imagem normalizada vai pro storage, Voyage e Claude.
+    # Thumbnail 1568x1568 primeiro: é o teto que a visão do Claude usa — acima
+    # disso a API redimensiona do lado dela cobrando os tokens da imagem cheia.
+    pil.thumbnail((1568, 1568))
     _buf = io.BytesIO()
     pil.save(_buf, format="JPEG", quality=90)
     imagem_jpeg = _buf.getvalue()
@@ -200,26 +216,40 @@ async def analisar(
 
     numero_chamado = f"CHM-{datetime.now(UTC).year}-{uuid4().hex[:6].upper()}"
     key = f"chamados/{numero_chamado}/foto.jpg"
-    uri, imagem_url = await run_in_threadpool(upload_imagem, imagem_jpeg, key, media_type)
+    # Upload em task paralela: não bloqueia o caminho crítico (embedding → RAG →
+    # veredito); o resultado só é aguardado na montagem da resposta.
+    upload_task = asyncio.create_task(
+        run_in_threadpool(upload_imagem, imagem_jpeg, key, media_type)
+    )
 
     try:
         query_vector = await run_in_threadpool(embed_multimodal, frase, pil, "query")
     except Exception as e:
+        upload_task.cancel()
         logger.exception("multimodal embedding failed numero_pedido=%s", numero_pedido)
         raise SafeQueryError("embedding", f"Falha ao gerar o embedding multimodal: {str(e)[:160]}") from e
 
-    identidade = await rag.verificar_identidade(query_vector, produto["sku"])
-
+    # Identidade e precedentes são consultas independentes sobre o mesmo vetor.
     if modo == "hybrid":
-        precedentes, funnel = await rag.hybrid_search(query_vector, frase, categoria)
+        busca = rag.hybrid_search(query_vector, frase, categoria)
     else:
-        precedentes, funnel = await rag.vector_search(query_vector, categoria)
+        busca = rag.vector_search(query_vector, categoria)
+    identidade, (precedentes, funnel) = await asyncio.gather(
+        rag.verificar_identidade(query_vector, produto["sku"]), busca
+    )
 
     try:
         veredito = await analisar_veredito(imagem_jpeg, media_type, frase, precedentes)
     except Exception as e:
+        upload_task.cancel()
         logger.exception("Claude verdict call failed numero_pedido=%s", numero_pedido)
         raise SafeQueryError("modelo", f"Falha ao consultar o Claude: {str(e)[:160]}") from e
+
+    try:
+        uri, imagem_url = await upload_task
+    except Exception as e:
+        logger.exception("image upload failed numero_chamado=%s", numero_chamado)
+        raise SafeQueryError("imagem", f"Falha ao salvar a imagem: {str(e)[:160]}") from e
 
     doc = {
         "numero_chamado": numero_chamado,
@@ -321,7 +351,18 @@ async def chamados_stream():
     sem polling. Demonstra real-time operacional nativo do MongoDB."""
 
     async def _gen():
-        pipeline = [{"$match": {"operationType": {"$in": ["insert", "update", "replace"]}}}]
+        # $project no próprio stream: sem ele cada evento carrega o fullDocument
+        # inteiro — incluindo o embedding de 1024 floats — pela rede a cada chamado.
+        pipeline = [
+            {"$match": {"operationType": {"$in": ["insert", "update", "replace"]}}},
+            {"$project": {
+                "operationType": 1,
+                "fullDocument.numero_chamado": 1,
+                "fullDocument.categoria": 1,
+                "fullDocument.produto": 1,
+                "fullDocument.status": 1,
+            }},
+        ]
         try:
             async with chamados().watch(pipeline, full_document="updateLookup") as stream:
                 yield ": stream conectado\n\n"
