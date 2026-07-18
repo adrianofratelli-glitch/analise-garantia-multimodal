@@ -1,119 +1,105 @@
-# Análise de Garantia Multimodal
+# Multimodal Warranty Triage
 
-**PoV genérica para qualquer varejista de produtos físicos** que precise triar
-chamados de garantia com IA multimodal — MongoDB Atlas como motor de todas as
-camadas, Voyage AI para embedding multimodal e Claude para o veredito.
+**A generic PoV for any retailer selling physical products** that needs to triage warranty claims with multimodal AI — MongoDB Atlas as the engine behind every layer, Voyage AI for multimodal embeddings and Claude for the verdict.
 
-## O problema
+## The problem
 
-Todo varejista que vende produto físico recebe milhares de chamados de garantia:
-uma foto, uma descrição vaga ("chegou quebrado") e um analista humano que precisa
-decidir — defeito de fábrica? dano de transporte? mau uso? A triagem manual é
-lenta, inconsistente entre analistas, e o conhecimento acumulado (casos já
-resolvidos) fica preso em planilhas e na cabeça das pessoas. Pior: nada garante
-que a foto enviada é sequer do produto comprado.
+Every retailer that ships physical products receives thousands of warranty claims: a photo, a vague description ("it arrived broken") and a human analyst who has to decide — factory defect? shipping damage? misuse? Manual triage is slow, inconsistent across analysts, and the accumulated knowledge (already-resolved cases) stays locked in spreadsheets and in people's heads. Worse: nothing guarantees the uploaded photo is even of the purchased product.
 
-## A solução
+## The solution
 
-O cliente informa o pedido, marca um checklist de sintomas, descreve o problema
-e envia uma foto. A partir daí:
+The customer enters the order number, checks a symptom checklist, describes the issue and uploads a photo. From there:
 
-1. **Verificação de identidade do produto** — a foto é comparada (embedding
-   multimodal) contra as fotos de referência de **todo** o catálogo. O sinal é
-   relativo: o produto do pedido precisa ser o melhor match entre todos — fotos
-   de estúdio pontuam alto entre si por natureza, então um threshold absoluto
-   sozinho deixa passar produto errado.
-2. **Precedentes** — busca vetorial (ou híbrida com `$rankFusion`) recupera
-   chamados já resolvidos e parecidos com o caso atual.
-3. **Veredito estruturado** — Claude classifica a causa provável (**defeito de
-   fábrica / transporte / mau uso / inconclusivo**) com *tool use forçado*
-   (saída estruturada, sem parsing frágil de JSON).
-4. **Revisão humana obrigatória** — todo veredito nasce `em_analise`; só um
-   humano promove a `resolvido` (exigência do CDC no Brasil). Cada caso
-   confirmado vira precedente para os próximos — um flywheel de conhecimento.
+1. **Product identity check** — the photo is compared (multimodal embedding) against the reference photos of the **entire** catalog. The signal is relative: the ordered product must be the best match among all of them — studio photos naturally score high against each other, so an absolute threshold alone would let the wrong product slip through.
+2. **Precedents** — vector search (or hybrid with `$rankFusion`) retrieves resolved cases similar to the current one.
+3. **Structured verdict** — Claude classifies the probable cause (**factory defect / shipping / misuse / inconclusive**) with *forced tool use* (structured output, no fragile JSON parsing).
+4. **Mandatory human review** — every verdict is born `em_analise` (under review); only a human promotes it to `resolvido` (a consumer-protection requirement in Brazil). Each confirmed case becomes a precedent for the next ones — a knowledge flywheel.
 
 ```mermaid
 flowchart LR
-    A[Cliente: pedido + checklist + descrição + foto] --> B[Normaliza JPEG]
+    A[Customer: order + checklist + description + photo] --> B[Normalize to JPEG]
     B --> C[Voyage multimodal 1024d]
-    C --> D{{"Identidade: melhor match no catálogo?"}}
-    C --> E["Precedentes: $vectorSearch / $rankFusion"]
-    E --> F[Claude · tool use forçado]
-    F --> G[(chamados · em_analise)]
-    G --> H[Revisão humana] --> I[(resolvido → vira precedente)]
+    C --> D{{"Identity: best match in the catalog?"}}
+    C --> E["Precedents: $vectorSearch / $rankFusion"]
+    E --> F[Claude · forced tool use]
+    F --> G[(cases · under review)]
+    G --> H[Human review] --> I[(resolved → becomes a precedent)]
 ```
 
-## MongoDB como motor de todas as camadas
+The kind of input the pipeline works with — synthetic seed photos of damaged products:
 
-| Camada | Onde vive |
+| | | |
+|---|---|---|
+| ![damaged chair](seed_images/cad_01.jpg) | ![damaged mattress](seed_images/col_01.jpg) | ![damaged chair 2](seed_images/cad_03.jpg) |
+
+## MongoDB as the engine behind every layer
+
+| Layer | Where it lives |
 |---|---|
-| Pedidos (lookup) | collection **`pedidos`** |
-| Catálogo de defeitos (checklist) | collection **`catalogo`** |
-| Chamados + veredito + embedding | collection **`chamados`** |
-| Fotos de referência do catálogo (identidade) | collection **`catalogo_fotos`** |
-| Busca semântica | **Atlas Vector Search** (`$vectorSearch`, índice `defeitos_vector_index`) |
-| Busca híbrida | **`$rankFusion`** (vetorial + Atlas Search full-text `chamados_text_index`) |
-| Fila em tempo real | **Change Streams** (SSE, sem polling) |
-| Analytics | **Aggregation Pipeline** (pronto para Atlas Charts) |
-| Governança de schema | **`$jsonSchema`** validator (`chamados`, `pedidos`) |
+| Order lookup | collection **`pedidos`** |
+| Defect checklist catalog | collection **`catalogo`** |
+| Cases + verdict + embedding | collection **`chamados`** |
+| Catalog reference photos (identity) | collection **`catalogo_fotos`** |
+| Semantic search | **Atlas Vector Search** (`$vectorSearch`, index `defeitos_vector_index`) |
+| Hybrid search | **`$rankFusion`** (vector + Atlas Search full-text `chamados_text_index`) |
+| Real-time review queue | **Change Streams** (SSE, no polling) |
+| Analytics | **Aggregation Pipeline** (Atlas Charts-ready) |
+| Schema governance | **`$jsonSchema`** validators (`chamados`, `pedidos`) |
 
-As imagens (blobs) ficam **fora** do MongoDB — padrão correto de blob storage.
-No PoV ficam em disco local (`backend/media/`, servidas pelo FastAPI); em produção
-basta reimplementar `storage.py` com S3 + CDN (a interface `(uri, url)` não muda).
+Image blobs live **outside** MongoDB — the correct blob-storage pattern. In the PoV they sit on local disk (`backend/media/`, served by FastAPI); in production you reimplement `storage.py` with S3 + CDN and the `(uri, url)` interface stays the same.
 
 ## Stack
-- **Backend**: FastAPI + Motor (async), Voyage `voyage-multimodal-3.5` (embedding
-  multimodal 1024d), Claude `claude-sonnet-4-6` com tool use forçado.
-- **Frontend**: React + Vite + LeafyGreen (design system MongoDB).
-- Tudo parametrizado pelo **`.env`** (DB, collections, índices, modelos) — veja
-  `.env.example`. Nunca commite o `.env` real.
 
-## Setup (uma vez)
+- **Backend**: FastAPI + Motor (async), Voyage `voyage-multimodal-3.5` (1024-dim multimodal embeddings), Claude with forced tool use.
+- **Frontend**: React + Vite + LeafyGreen (MongoDB's design system).
+- Everything parameterized via **`.env`** (DB, collections, indexes, models) — see `.env.example`. Never commit a real `.env`.
+
+## Setup (once)
 
 ```bash
 cd backend
 python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 
-# popular o MongoDB (lê o .env)
-./.venv/bin/python seed_meta.py            # pedidos + catalogo
-./.venv/bin/python seed.py                 # 15 chamados resolvidos (embeda as imagens)
-./.venv/bin/python seed_catalogo_fotos.py  # 4 fotos de referência por SKU (identidade)
-./.venv/bin/python setup_indexes.py        # índices regulares + vetorial + texto + $jsonSchema
+# populate MongoDB (reads .env)
+./.venv/bin/python seed_meta.py            # orders + checklist catalog
+./.venv/bin/python seed.py                 # 15 resolved cases (embeds their images)
+./.venv/bin/python seed_catalogo_fotos.py  # 4 reference photos per SKU (identity)
+./.venv/bin/python setup_indexes.py        # regular + vector + text indexes + $jsonSchema
 
-# opcional: gerar fotos placeholder antes de ter fotos reais de catálogo
+# optional: placeholder photos before you have real catalog shots
 ./.venv/bin/python generate_placeholders.py
 ./.venv/bin/python generate_catalogo_placeholders.py
 ```
 
-## Rodar
+## Run
 
 ```bash
 ./start.sh        # backend :8100 + frontend :5190 (dev)
-# smoke test do pipeline completo:
+# full-pipeline smoke test:
 cd backend && ./.venv/bin/python test_http.py
 ```
 
-## Testes e lint
+## Tests & lint
 
 ```bash
 cd backend
 ./.venv/bin/pip install -r requirements-dev.txt
-./.venv/bin/pytest        # testes unitários (lógica pura, sem Atlas/rede)
+./.venv/bin/pytest        # unit tests (pure logic, no Atlas/network)
 ./.venv/bin/ruff check .  # lint
 ```
 
-`test_http.py` é o smoke test do servidor real (precisa do backend no ar e do
-Atlas seedado) — `pytest` cobre a lógica que não depende de rede.
+`test_http.py` is the live-server smoke test (needs the backend up and Atlas seeded) — `pytest` covers the logic that doesn't depend on the network.
 
 ## Endpoints
-| Método | Rota | O quê |
+
+| Method | Route | What |
 |---|---|---|
-| POST | `/api/lookup` | pedido → produtos (lê de `pedidos`) |
-| GET | `/api/checklist/{categoria}` | itens do checklist (lê de `catalogo`) |
-| POST | `/api/analisar` | pipeline completo; `modo=vector` ou `modo=hybrid` |
-| GET | `/api/chamados/pendentes` | fila de revisão |
-| POST | `/api/revisar` | revisão humana → resolvido |
-| GET | `/api/analytics` | agregações (Atlas Charts) |
-| GET | `/api/chamados/stream` | Change Stream (SSE), novos chamados em tempo real |
-| GET | `/api/health` | ping + counts + modelo |
-| GET | `/api/metrics` | métricas em processo (latência, tokens, cache) |
+| POST | `/api/lookup` | order → products (reads `pedidos`) |
+| GET | `/api/checklist/{categoria}` | checklist items (reads `catalogo`) |
+| POST | `/api/analisar` | full pipeline; `modo=vector` or `modo=hybrid` |
+| GET | `/api/chamados/pendentes` | review queue |
+| POST | `/api/revisar` | human review → resolved |
+| GET | `/api/analytics` | aggregations (Atlas Charts) |
+| GET | `/api/chamados/stream` | Change Stream (SSE), new cases in real time |
+| GET | `/api/health` | ping + counts + model |
+| GET | `/api/metrics` | in-process metrics (latency, tokens, cache) |
