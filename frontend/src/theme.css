@@ -1,19 +1,23 @@
 :root {
   --bg-primary: #001e2b;
-  --bg-secondary: #002838;
-  --bg-card: #003345;
-  --bg-card-hover: #004058;
-  --border-subtle: rgba(255, 255, 255, 0.06);
+  --bg-secondary: #112733;
+  --bg-card: #1c2d38;
+  --bg-card-hover: #263c49;
+  --border-subtle: #3d4f58;
   --border-accent: rgba(0, 237, 100, 0.25);
-  --text-pri: #fafafa;
-  --text-sec: #b8d8e8;
-  --text-muted: #7fa8bc;
+  --text-pri: #e8edeb;
+  --text-sec: #c1c7c6;
+  --text-muted: #889397;
   --accent: #00ed64;
-  --accent-glow: rgba(0, 237, 100, 0.15);
-  --orange: #f97316;
-  --cyan: #06b6d4;
-  --teal: #14b8a6;
+  --accent-glow: rgba(0, 237, 100, 0.1);
+  --link: #0498ec;
+  --orange: #ffc010;
+  --cyan: #0498ec;
+  --teal: #00a35c;
   --mdb-red: #ff6960;
+  --font-sans: 'Outfit', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: dark;
 }
 
 * {
@@ -24,10 +28,11 @@
 
 html {
   scroll-behavior: smooth;
+  background: var(--bg-primary);
 }
 
 body {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-sans);
   background: var(--bg-primary);
   color: var(--text-sec);
   min-height: 100vh;
@@ -61,7 +66,17 @@ body::after {
 code,
 pre,
 .mono {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
+}
+
+::selection {
+  color: var(--text-pri);
+  background: rgba(0, 237, 100, 0.24);
+}
+
+:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 3px;
 }
 
 /* ---------- top nav ---------- */
@@ -276,7 +291,7 @@ nav.top-nav {
   position: relative;
   border-radius: 18px;
   border: 1px solid var(--border-subtle);
-  background: linear-gradient(145deg, var(--bg-secondary) 0%, rgba(0, 40, 56, 0.55) 100%);
+  background: linear-gradient(145deg, var(--bg-card) 0%, rgba(17, 39, 51, 0.72) 100%);
   padding: 1.5rem;
   transition: border-color 0.25s ease;
   overflow: hidden;
@@ -550,7 +565,7 @@ footer.app-footer p {
   padding: 0.6rem 0.85rem;
   border-radius: 10px;
   border: 1px solid var(--orange);
-  background: rgba(249, 115, 22, 0.1);
+  background: rgba(255, 192, 16, 0.1);
   color: var(--orange);
   font-size: 0.82rem;
   font-weight: 600;
@@ -590,4 +605,15 @@ footer.app-footer p {
   font-size: 0.8rem;
   color: var(--text-pri);
   font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

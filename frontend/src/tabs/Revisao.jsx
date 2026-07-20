@@ -95,13 +95,13 @@ export default function Revisao({ state, setState }) {
               {carregando ? 'Atualizando…' : '↻ Atualizar'}
             </Button>
           </div>
-          <p className="dim" style={{ marginBottom: 12 }}>
+          <div className="dim" style={{ marginBottom: 12 }}>
             Chamados em <b>em_analise</b> aguardando confirmacao. Cada resolucao vira
             precedente recuperavel (flywheel).{' '}
             <Badge variant={live ? 'green' : 'lightgray'}>
               {live ? '● live — Change Streams' : '○ live indisponivel'}
             </Badge>
-          </p>
+          </div>
           {(pendentes ?? []).length === 0 && (
             <p className="dim">Nenhum chamado pendente. Abra um no Portal de Garantia.</p>
           )}
