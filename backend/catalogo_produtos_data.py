@@ -16,4 +16,9 @@ CATALOGO_PRODUTOS = [
     {"sku": "CAD-GAMER-X", "nome": "Cadeira Gamer X", "categoria": "cadeira", "n_fotos": 4},
     {"sku": "COL-MOLAS-Q", "nome": "Colchao Molas Ensacadas Queen", "categoria": "colchao", "n_fotos": 2},
     {"sku": "GR-6PORTAS", "nome": "Guarda-Roupa 6 Portas", "categoria": "guarda_roupa", "n_fotos": 3},
+    # SKU distrator — mesma categoria, produto visualmente parecido porem diferente.
+    # Existe so para demonstrar que a verificacao de identidade e relativa ao catalogo
+    # inteiro (nao um limiar absoluto): uma foto do GR-3PORTAS deve perder para o
+    # GR-6PORTAS certo quando o pedido e do GR-6PORTAS, e vice-versa.
+    {"sku": "GR-3PORTAS", "nome": "Guarda-Roupa 3 Portas", "categoria": "guarda_roupa", "n_fotos": 2},
 ]

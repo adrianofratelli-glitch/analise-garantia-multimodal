@@ -1,18 +1,21 @@
-"""Gera placeholders de seed para validar o pipeline end-to-end.
+"""Gera fotos sinteticas de seed para validar o pipeline end-to-end.
 
-ATENCAO: placeholders NAO tem valor de demo de cliente — sao formas e texto,
-nao defeitos reais. Servem so para testar S3 + embed multimodal + $vectorSearch
-+ Claude enquanto as fotos de catalogo da loja nao chegam. Substitua
-por imagens reais (mesmos nomes de arquivo) antes de qualquer apresentacao.
+Nao sao fotos reais do produto — sao renders de estudio gerados por codigo
+(silhueta do movel + marca de defeito no proprio objeto), sem nenhum texto
+de aviso embutido na imagem. Isso evita que o modelo de visao veja um aviso
+tipo "placeholder" e desconte confianca por causa disso. Ainda assim, troque
+por fotos reais do catalogo do cliente (mesmos nomes de arquivo) assim que
+disponiveis — visualmente mais convincente para o cliente final.
 
 Uso (a partir de backend/):
     python generate_placeholders.py
 Gera os arquivos em ../seed_images/ com os nomes referenciados em seed_data.py.
 """
 
+import math
 import os
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter
 
 try:
     from seed_data import CHAMADOS_SEED
@@ -22,22 +25,20 @@ except ImportError as e:
 OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "seed_images")
 W, H = 800, 600
 
-# Cor de fundo por categoria — dá alguma separação visual entre famílias de produto.
+# Cor de fundo de estudio por categoria (gradiente sutil, sem texto).
 COR_CATEGORIA = {
-    "cadeira":      (38, 70, 83),    # azul-petróleo
-    "colchao":      (42, 157, 143),  # verde
-    "guarda_roupa": (138, 84, 40),   # marrom
+    "cadeira":      (52, 58, 64),
+    "colchao":      (233, 236, 239),
+    "guarda_roupa": (74, 58, 46),
 }
 
-# Cor da "marca de defeito" por tipo, derivada do checklist.
 COR_DEFEITO = {
-    "estrutural": (231, 111, 81),   # laranja
-    "funcional":  (244, 162, 97),   # âmbar
-    "estetico":   (233, 196, 106),  # amarelo
-    "faltante":   (200, 200, 200),  # cinza
+    "estrutural": (183, 28, 28),
+    "funcional":  (198, 100, 20),
+    "estetico":   (90, 70, 20),
+    "faltante":   (60, 60, 60),
 }
 
-# Mapa item -> tipo (espelha defeitos_catalog para o script ser standalone).
 ITEM_TIPO = {
     "perna_quebrada": "estrutural", "rodinha_solta": "estrutural", "base_travada": "funcional",
     "pistao_vazando": "funcional", "estofado_rasgado": "estetico", "mancha": "estetico",
@@ -48,80 +49,95 @@ ITEM_TIPO = {
 }
 
 
-def _font(size):
-    for path in (
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    ):
-        if os.path.exists(path):
-            return ImageFont.truetype(path, size)
-    return ImageFont.load_default()
+def _studio_bg(cor_base):
+    """Fundo em vinheta radial, imitando ciclorama de estudio fotografico."""
+    img = Image.new("RGB", (W, H), cor_base)
+    vign = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(vign)
+    cx, cy, r = W // 2, int(H * 0.42), int(W * 0.75)
+    for i in range(r, 0, -4):
+        alpha = int(140 * (1 - i / r))
+        d.ellipse([cx - i, cy - i, cx + i, cy + i], fill=alpha)
+    vign = vign.filter(ImageFilter.GaussianBlur(60))
+    light = Image.new("RGB", (W, H), tuple(min(255, c + 45) for c in cor_base))
+    return Image.composite(light, img, vign)
 
 
-def _wrap(draw, text, font, max_w):
-    palavras, linhas, atual = text.split(), [], ""
-    for p in palavras:
-        teste = (atual + " " + p).strip()
-        if draw.textlength(teste, font=font) <= max_w:
-            atual = teste
-        else:
-            linhas.append(atual)
-            atual = p
-    if atual:
-        linhas.append(atual)
-    return linhas
+def _shadow(img, box):
+    x0, y0, x1, y1 = box
+    d = ImageDraw.Draw(img, "RGBA")
+    d.ellipse([x0 - 20, y1 - 15, x1 + 20, y1 + 35], fill=(0, 0, 0, 60))
+    return img.filter(ImageFilter.GaussianBlur(0))
+
+
+def _silhueta(d, categoria, box):
+    """Silhueta simples do movel, so com formas geometricas (sem texto)."""
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0, y1 - y0
+    base = (222, 216, 204) if categoria == "colchao" else (120, 92, 60) if categoria == "guarda_roupa" else (90, 96, 102)
+
+    if categoria == "cadeira":
+        d.rounded_rectangle([x0 + w * 0.15, y0, x1 - w * 0.15, y0 + h * 0.45], radius=18, fill=base)
+        d.rounded_rectangle([x0 + w * 0.1, y0 + h * 0.45, x1 - w * 0.1, y0 + h * 0.55], radius=14, fill=base)
+        for lx in (x0 + w * 0.15, x1 - w * 0.2):
+            d.rectangle([lx, y0 + h * 0.55, lx + w * 0.05, y1], fill=(50, 50, 50))
+    elif categoria == "colchao":
+        d.rounded_rectangle([x0, y0 + h * 0.25, x1, y1], radius=22, fill=base)
+        for qx in range(int(x0 + w * 0.12), int(x1 - w * 0.05), int(w * 0.14)):
+            for qy in range(int(y0 + h * 0.4), int(y1 - h * 0.1), int(h * 0.22)):
+                d.ellipse([qx, qy, qx + 6, qy + 6], fill=(190, 184, 170))
+    else:  # guarda_roupa
+        d.rectangle([x0, y0, x1, y1], fill=base)
+        for i in range(1, 3):
+            lx = x0 + w * i / 3
+            d.line([(lx, y0), (lx, y1)], fill=(60, 44, 30), width=4)
+        for i in range(3):
+            hx = x0 + w * (i + 0.85) / 3
+            d.ellipse([hx, y0 + h * 0.5, hx + 10, y0 + h * 0.5 + 10], fill=(20, 20, 20))
+    return box
 
 
 def _marca_defeito(draw, tipo, box):
-    """Desenha uma forma simples representando o tipo de defeito — varia o sinal visual."""
     x0, y0, x1, y1 = box
-    cor = COR_DEFEITO.get(tipo, (255, 255, 255))
-    if tipo == "estrutural":  # rachadura em zigue-zague
-        pts = [(x0, y0), (x0 + 60, y0 + 40), (x0 + 20, y0 + 80),
-               (x0 + 80, y0 + 130), (x0 + 30, y0 + 180)]
-        draw.line(pts, fill=cor, width=8, joint="curve")
-    elif tipo == "estetico":  # mancha / círculo
-        draw.ellipse([x0, y0, x0 + 150, y0 + 150], outline=cor, width=10)
-        draw.ellipse([x0 + 40, y0 + 40, x0 + 110, y0 + 110], fill=cor)
-    elif tipo == "funcional":  # seta para baixo (afunda / não segura)
-        draw.line([(x0 + 75, y0), (x0 + 75, y0 + 150)], fill=cor, width=10)
-        draw.polygon([(x0 + 45, y0 + 120), (x0 + 105, y0 + 120), (x0 + 75, y0 + 180)], fill=cor)
-    else:  # faltante — X / lacuna
-        draw.line([(x0, y0), (x0 + 150, y0 + 150)], fill=cor, width=10)
-        draw.line([(x0 + 150, y0), (x0, y0 + 150)], fill=cor, width=10)
+    cor = COR_DEFEITO.get(tipo, (120, 30, 30))
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    if tipo == "estrutural":
+        pts = [(x0, y0), (x0 + (x1 - x0) * 0.3, cy - 10), (x0 + (x1 - x0) * 0.15, cy + 20),
+               (x0 + (x1 - x0) * 0.55, cy + 5), (x0 + (x1 - x0) * 0.35, y1)]
+        draw.line(pts, fill=cor, width=5, joint="curve")
+    elif tipo == "estetico":
+        draw.ellipse([cx - 45, cy - 30, cx + 45, cy + 30], fill=(*cor, 160) if len(cor) == 3 else cor)
+    elif tipo == "funcional":
+        draw.line([(cx, y0 + 10), (cx, y1 - 20)], fill=cor, width=6)
+        draw.polygon([(cx - 18, y1 - 40), (cx + 18, y1 - 40), (cx, y1 - 10)], fill=cor)
+    else:
+        draw.line([(x0 + 10, y0 + 10), (x1 - 10, y1 - 10)], fill=cor, width=6)
+        draw.line([(x1 - 10, y0 + 10), (x0 + 10, y1 - 10)], fill=cor, width=6)
 
 
 def gerar():
     os.makedirs(OUT_DIR, exist_ok=True)
-    f_tit, f_sub, f_txt = _font(34), _font(24), _font(20)
 
     for c in CHAMADOS_SEED:
         cat = c["categoria"]
-        img = Image.new("RGB", (W, H), COR_CATEGORIA.get(cat, (50, 50, 50)))
+        img = _studio_bg(COR_CATEGORIA.get(cat, (60, 60, 60)))
         d = ImageDraw.Draw(img)
 
-        d.text((40, 30), c["numero_chamado"], font=f_tit, fill=(255, 255, 255))
-        d.text((40, 80), f"{cat.upper()} · {c['produto']['nome']}", font=f_sub, fill=(230, 230, 230))
+        box = (W * 0.28, H * 0.12, W * 0.72, H * 0.88)
+        img = _shadow(img, box)
+        d = ImageDraw.Draw(img)
+        _silhueta(d, cat, box)
 
         item = c["checklist"][0] if c["checklist"] else ""
         tipo = ITEM_TIPO.get(item, "estetico")
-        d.text((40, 130), f"defeito: {item}  ({tipo})", font=f_txt, fill=(255, 230, 200))
+        _marca_defeito(d, tipo, box)
 
-        _marca_defeito(d, tipo, (560, 180, 740, 360))
-
-        y = 200
-        for linha in _wrap(d, c["descricao_cliente"], f_txt, 480):
-            d.text((40, y), linha, font=f_txt, fill=(245, 245, 245))
-            y += 30
-
-        d.text((40, H - 50), "PLACEHOLDER — substituir por foto real",
-               font=f_txt, fill=(255, 180, 180))
-
+        img = img.filter(ImageFilter.GaussianBlur(0.4))
         caminho = os.path.join(OUT_DIR, c["imagem_arquivo"])
-        img.save(caminho, "JPEG", quality=85)
+        img.save(caminho, "JPEG", quality=88)
         print("ok", c["imagem_arquivo"])
 
-    print(f"\n{len(CHAMADOS_SEED)} placeholders em {os.path.abspath(OUT_DIR)}")
+    print(f"\n{len(CHAMADOS_SEED)} imagens sinteticas em {os.path.abspath(OUT_DIR)}")
 
 
 if __name__ == "__main__":
