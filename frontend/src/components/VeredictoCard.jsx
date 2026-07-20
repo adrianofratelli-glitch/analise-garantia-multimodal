@@ -7,17 +7,29 @@ const ROTULO = {
   inconclusivo: { txt: 'Inconclusivo', variant: 'blue' },
 };
 
+// Graus de confiança — a classificacao (defeito_fabrica/mau_uso/...) já vem do
+// veredito, mas o numero de 0 a 1 sozinho nao diz se é uma confiança forte ou
+// fraca. Faixas: <40% baixa (pouca evidencia visual sustentando a causa),
+// 40-70% moderada (hipotese plausivel mas nao conclusiva), >=70% alta.
+const grauConfianca = (pct) => {
+  if (pct >= 70) return { txt: 'confiança alta', variant: 'green' };
+  if (pct >= 40) return { txt: 'confiança moderada', variant: 'yellow' };
+  return { txt: 'confiança baixa', variant: 'red' };
+};
+
 /** Card de veredito: classificação + barra de confiança + aviso de revisão humana. */
 export default function VeredictoCard({ veredito }) {
   if (!veredito) return null;
   const r = ROTULO[veredito.classificacao] || { txt: veredito.classificacao, variant: 'darkgray' };
   const pct = Math.round((veredito.confianca ?? 0) * 100);
+  const grau = grauConfianca(pct);
 
   return (
     <div className="card neutral">
       <div className="card-header">
-        <span className="card-title">Veredito da triagem (IA)</span>
+        <span className="card-title">Veredito da triagem</span>
         <Badge variant={r.variant}>{r.txt}</Badge>
+        <Badge variant={grau.variant}>{grau.txt}</Badge>
       </div>
 
       <div className="conf-row">
@@ -44,9 +56,8 @@ export default function VeredictoCard({ veredito }) {
 
       {veredito._meta && (
         <div className="dim mono" style={{ marginTop: 8, fontSize: 11 }}>
-          {veredito._meta.model} · {veredito._meta.latency_ms}ms ·
-          {' '}{veredito._meta.input_tokens}+{veredito._meta.output_tokens} tokens ·
-          {' '}{veredito._meta.precedentes_usados} precedentes
+          {veredito._meta.precedentes_usados} precedentes recuperados via $rankFusion ·
+          {' '}{veredito._meta.latency_ms}ms de triagem
         </div>
       )}
     </div>
