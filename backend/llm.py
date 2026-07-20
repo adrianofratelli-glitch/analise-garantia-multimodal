@@ -90,15 +90,33 @@ async def analisar_veredito(
     media_type: str,
     frase_analise: str,
     precedentes: list[dict],
+    imagens_extra: list[tuple[bytes, str, str]] | None = None,
 ) -> dict:
-    """Chama o Claude com visão e tool use forçado; retorna o veredito estruturado."""
+    """Chama o Claude com visão e tool use forçado; retorna o veredito estruturado.
+
+    `imagens_extra` — fotos adicionais por item de checklist (bytes, media_type,
+    rótulo do item), enviadas junto da foto principal para dar mais evidência
+    visual ao veredito (não são só guardadas — o Claude efetivamente as vê).
+    """
     contexto = _montar_contexto(precedentes)
     b64 = base64.standard_b64encode(imagem_bytes).decode()
+    n_extra = len(imagens_extra or [])
     user_text = (
         f"Descricao do chamado:\n{frase_analise}\n\n"
         f"Chamados historicos semelhantes (resolvidos):\n{contexto}\n\n"
-        f"Classifique a causa provavel do defeito visivel na imagem e registre via emitir_veredito."
+        + (f"A primeira imagem é a foto principal do defeito; as {n_extra} seguintes "
+           f"são fotos extras relacionadas a itens específicos do checklist.\n\n" if n_extra else "")
+        + "Classifique a causa provavel do defeito visivel nas imagens e registre via emitir_veredito."
     )
+
+    content = [{"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}}]
+    for extra_bytes, extra_media_type, item_label in (imagens_extra or []):
+        content.append({
+            "type": "image",
+            "source": {"type": "base64", "media_type": extra_media_type, "data": base64.standard_b64encode(extra_bytes).decode()},
+        })
+        content.append({"type": "text", "text": f"(foto extra acima referente ao item de checklist: {item_label})"})
+    content.append({"type": "text", "text": user_text})
 
     start = time.perf_counter()
     resp = await client.messages.create(
@@ -108,13 +126,7 @@ async def analisar_veredito(
         system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
         tools=[VEREDITO_TOOL],
         tool_choice={"type": "tool", "name": "emitir_veredito"},
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}},
-                {"type": "text", "text": user_text},
-            ],
-        }],
+        messages=[{"role": "user", "content": content}],
     )
     latency_ms = int((time.perf_counter() - start) * 1000)
 

@@ -74,9 +74,11 @@ export default function App() {
           Defeito vira <span>precedente</span> recuperável
         </h1>
         <p className="page-subtitle">
-          Foto + checklist + descrição entram numa busca vetorial multimodal sobre
-          chamados já resolvidos. O Claude propõe um veredito — sempre sujeito a
-          revisão humana. Cada confirmação realimenta a base (flywheel).
+          Foto + checklist + descrição viram um embedding multimodal e entram numa
+          busca vetorial (Atlas <code>$vectorSearch</code> + <code>$rankFusion</code>) sobre
+          chamados já resolvidos — o modelo documental guarda cada precedente exatamente
+          como uma decisão futura vai precisar reencontrá-lo. A triagem sugere um veredito,
+          sempre sujeito a revisão humana. Cada confirmação realimenta a base (flywheel).
         </p>
 
         <div className="stat-bar">
@@ -98,9 +100,9 @@ export default function App() {
           </div>
           <div className="stat-item">
             <div className="stat-val" style={{ fontSize: '1rem', lineHeight: '1.9' }}>
-              {health?.model ?? '—'}
+              $vectorSearch · $rankFusion
             </div>
-            <div className="stat-label">modelo de visão</div>
+            <div className="stat-label">Atlas · recuperação híbrida</div>
           </div>
         </div>
 

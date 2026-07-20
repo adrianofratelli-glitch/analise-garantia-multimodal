@@ -9,6 +9,7 @@ export default function PipelineSteps({ steps }) {
           </div>
           <div className="step-body">
             <div className="step-title">{s.title}</div>
+            {s.detail && <div className="dim" style={{ fontSize: 11, marginTop: 2 }}>{s.detail}</div>}
             {s.status === 'pending' && <span className="dim">aguardando…</span>}
             {s.status === 'running' && <span className="dim">{s.runningLabel}</span>}
             {s.status === 'done' && s.content}

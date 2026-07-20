@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from bson import ObjectId
-from fastapi import FastAPI, Form, Request, UploadFile
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -170,21 +170,11 @@ async def _tabela_catalogo(categoria: str) -> dict:
     return {item["id"]: item["tipo"] for item in (doc or {}).get("itens", [])}
 
 
-@app.post("/api/analisar")
-async def analisar(
-    imagem: UploadFile,
-    numero_pedido: str = Form(...),
-    sku: str = Form(...),
-    descricao: str = Form(""),
-    checklist: list[str] = Form(default=[]),
-    modo: str = Form("vector"),  # "vector" (padrão) ou "hybrid" ($rankFusion)
-):
-    produto = await _resolver_produto(numero_pedido, sku)
-    categoria = produto["categoria"]
-
-    if imagem.content_type not in ALLOWED_MEDIA:
-        raise SafeQueryError("imagem", f"Formato '{imagem.content_type}' não aceito. Envie JPEG ou PNG.")
-    imagem_bytes = await imagem.read()
+async def _ler_e_normalizar(upload: UploadFile) -> tuple[Image.Image, bytes]:
+    """Valida, lê e normaliza um UploadFile para JPEG (mesmo contrato da foto principal)."""
+    if upload.content_type not in ALLOWED_MEDIA:
+        raise SafeQueryError("imagem", f"Formato '{upload.content_type}' não aceito. Envie JPEG ou PNG.")
+    imagem_bytes = await upload.read()
     if not imagem_bytes:
         raise SafeQueryError("imagem", "Nenhuma imagem recebida.")
     if len(imagem_bytes) > config.MAX_IMAGE_BYTES:
@@ -202,7 +192,30 @@ async def analisar(
     pil.thumbnail((1568, 1568))
     _buf = io.BytesIO()
     pil.save(_buf, format="JPEG", quality=90)
-    imagem_jpeg = _buf.getvalue()
+    return pil, _buf.getvalue()
+
+
+@app.post("/api/analisar")
+async def analisar(
+    imagem: UploadFile,
+    numero_pedido: str = Form(...),
+    sku: str = Form(...),
+    descricao: str = Form(""),
+    checklist: list[str] = Form(default=[]),
+    modo: str = Form("vector"),  # "vector" (padrão) ou "hybrid" ($rankFusion)
+    # Fotos extras, uma por item de checklist marcado — cada uma gera seu próprio
+    # embedding multimodal (roda verificar_identidade também) e vai junto da foto
+    # principal para o Claude no veredito; não é só evidência guardada.
+    fotos_extra: list[UploadFile] = File(default=[]),
+    fotos_extra_itens: list[str] = Form(default=[]),
+):
+    produto = await _resolver_produto(numero_pedido, sku)
+    categoria = produto["categoria"]
+
+    if len(fotos_extra) != len(fotos_extra_itens):
+        raise SafeQueryError("imagem", "Cada foto extra precisa estar associada a exatamente um item do checklist.")
+
+    pil, imagem_jpeg = await _ler_e_normalizar(imagem)
     media_type = "image/jpeg"
 
     chamado = {
@@ -222,34 +235,83 @@ async def analisar(
         run_in_threadpool(upload_imagem, imagem_jpeg, key, media_type)
     )
 
+    extras_normalizadas = [await _ler_e_normalizar(f) for f in fotos_extra]
+    extras_upload_tasks = [
+        asyncio.create_task(
+            run_in_threadpool(
+                upload_imagem, jpeg_bytes, f"chamados/{numero_chamado}/extra_{i}_{item}.jpg", media_type
+            )
+        )
+        for i, ((_, jpeg_bytes), item) in enumerate(zip(extras_normalizadas, fotos_extra_itens, strict=True))
+    ]
+
     try:
         query_vector = await run_in_threadpool(embed_multimodal, frase, pil, "query")
     except Exception as e:
         upload_task.cancel()
+        for t in extras_upload_tasks:
+            t.cancel()
         logger.exception("multimodal embedding failed numero_pedido=%s", numero_pedido)
         raise SafeQueryError("embedding", f"Falha ao gerar o embedding multimodal: {str(e)[:160]}") from e
 
+    # Embedding de cada foto extra: mesma frase do chamado (o item já está nela
+    # via checklist), contrato idêntico ao da foto principal.
+    try:
+        extras_vetores = await asyncio.gather(
+            *(run_in_threadpool(embed_multimodal, frase, extra_pil, "query") for extra_pil, _ in extras_normalizadas)
+        )
+    except Exception as e:
+        upload_task.cancel()
+        for t in extras_upload_tasks:
+            t.cancel()
+        logger.exception("multimodal embedding (foto extra) failed numero_pedido=%s", numero_pedido)
+        raise SafeQueryError("embedding", f"Falha ao gerar o embedding de uma foto extra: {str(e)[:160]}") from e
+
     # Identidade e precedentes são consultas independentes sobre o mesmo vetor.
+    # Identidade roda pra foto principal E pra cada foto extra — o mais restritivo
+    # vence (se qualquer foto divergir do SKU, o chamado inteiro fica sinalizado).
     if modo == "hybrid":
         busca = rag.hybrid_search(query_vector, frase, categoria)
     else:
         busca = rag.vector_search(query_vector, categoria)
-    identidade, (precedentes, funnel) = await asyncio.gather(
-        rag.verificar_identidade(query_vector, produto["sku"]), busca
+    identidade_principal, *identidades_extra, (precedentes, funnel) = await asyncio.gather(
+        rag.verificar_identidade(query_vector, produto["sku"]),
+        *(rag.verificar_identidade(v, produto["sku"]) for v in extras_vetores),
+        busca,
     )
+    identidade = {
+        **identidade_principal,
+        "fotos_extra": [
+            {"item": item, **ident}
+            for item, ident in zip(fotos_extra_itens, identidades_extra, strict=True)
+        ],
+        "abaixo_threshold": identidade_principal["abaixo_threshold"] or any(i["abaixo_threshold"] for i in identidades_extra),
+    }
 
     try:
-        veredito = await analisar_veredito(imagem_jpeg, media_type, frase, precedentes)
+        imagens_extra_veredito = [
+            (jpeg_bytes, media_type, item)
+            for (_, jpeg_bytes), item in zip(extras_normalizadas, fotos_extra_itens, strict=True)
+        ]
+        veredito = await analisar_veredito(imagem_jpeg, media_type, frase, precedentes, imagens_extra_veredito)
     except Exception as e:
         upload_task.cancel()
+        for t in extras_upload_tasks:
+            t.cancel()
         logger.exception("Claude verdict call failed numero_pedido=%s", numero_pedido)
         raise SafeQueryError("modelo", f"Falha ao consultar o Claude: {str(e)[:160]}") from e
 
     try:
         uri, imagem_url = await upload_task
+        extras_uploads = await asyncio.gather(*extras_upload_tasks)
     except Exception as e:
         logger.exception("image upload failed numero_chamado=%s", numero_chamado)
         raise SafeQueryError("imagem", f"Falha ao salvar a imagem: {str(e)[:160]}") from e
+
+    fotos_extra_doc = [
+        {"item": item, "uri": extra_uri, "url": extra_url}
+        for item, (extra_uri, extra_url) in zip(fotos_extra_itens, extras_uploads, strict=True)
+    ]
 
     doc = {
         "numero_chamado": numero_chamado,
@@ -261,6 +323,7 @@ async def analisar(
         "descricao_cliente": descricao,
         "frase_analise": frase,
         "imagem_cliente_uri": uri,
+        "fotos_extra": fotos_extra_doc,
         "embedding": query_vector,
         "veredito": veredito,
         "identidade_produto": identidade,
@@ -276,6 +339,7 @@ async def analisar(
         "produto": chamado["produto"],
         "frase_analise": frase,
         "imagem_url": imagem_url,
+        "fotos_extra": fotos_extra_doc,
         "veredito": veredito,
         "identidade": identidade,
         "precedentes": [{k: v for k, v in p.items() if k != "embedding"} for p in precedentes],
