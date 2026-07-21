@@ -18,7 +18,11 @@ from anthropic import AsyncAnthropic
 import config
 import observability
 
-client = AsyncAnthropic(default_headers={"api-key": os.getenv("ANTHROPIC_API_KEY", "")})  # lê ANTHROPIC_API_KEY do ambiente (config carregou o .env)
+client = AsyncAnthropic(
+    api_key="dummy",  # SDK exige valor não-vazio; auth real vai no header api-key abaixo
+    base_url=config.ANTHROPIC_BASE_URL,
+    default_headers={"api-key": os.getenv("ANTHROPIC_API_KEY", "")},
+)  # Grove/Azure APIM espera header "api-key", não "x-api-key" (o que api_key= geraria)
 MODEL = config.ANTHROPIC_MODEL
 
 SYSTEM = """Voce e um analista de triagem de garantia de uma loja online de moveis e itens para casa.
