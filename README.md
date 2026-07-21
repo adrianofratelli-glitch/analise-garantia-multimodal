@@ -26,11 +26,7 @@ flowchart LR
     G --> H[Human review] --> I[(resolved → becomes a precedent)]
 ```
 
-The kind of input the pipeline works with — synthetic seed photos of damaged products:
-
-| | | |
-|---|---|---|
-| ![damaged chair](seed_images/cad_01.jpg) | ![damaged mattress](seed_images/col_01.jpg) | ![damaged chair 2](seed_images/cad_03.jpg) |
+The kind of input the pipeline works with: a photo of a damaged product plus a checklist + description. This repo does **not** ship any sample photos — bring your own (see [Setup](#setup-once) below) so the demo reflects the retailer's actual catalog instead of generic canned images.
 
 ## MongoDB as the engine behind every layer
 
@@ -56,17 +52,27 @@ Image blobs live **outside** MongoDB — the correct blob-storage pattern. In th
 
 ## Setup (once)
 
+This repo does not bundle any seed photos — provide your own so the demo uses a real
+(or at least non-generic) product catalog instead of stock "damaged product" images.
+
 ```bash
 cd backend
 python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 
+# point at your own photos (defaults to backend/../seed_images if unset)
+export SEED_IMAGES_DIR=/path/to/your/photos   # or set it in .env
+
+# expected layout under $SEED_IMAGES_DIR:
+#   cad_01.jpg ... (files referenced by backend/seed_data.py's imagem_arquivo field)
+#   catalogo/<sku>/1.jpg .. N.jpg (files referenced by backend/catalogo_produtos_data.py)
+
 # populate MongoDB (reads .env)
 ./.venv/bin/python seed_meta.py            # orders + checklist catalog
 ./.venv/bin/python seed.py                 # 15 resolved cases (embeds their images)
-./.venv/bin/python seed_catalogo_fotos.py  # 4 reference photos per SKU (identity)
+./.venv/bin/python seed_catalogo_fotos.py  # reference photos per SKU (identity)
 ./.venv/bin/python setup_indexes.py        # regular + vector + text indexes + $jsonSchema
 
-# optional: placeholder photos before you have real catalog shots
+# no real photos yet? generate synthetic placeholders into $SEED_IMAGES_DIR instead
 ./.venv/bin/python generate_placeholders.py
 ./.venv/bin/python generate_catalogo_placeholders.py
 ```

@@ -4,9 +4,12 @@ Defeitos visualmente distintos por categoria e classificações variadas
 (defeito_fabrica / defeito_transporte / mau_uso) — sem 'inconclusivo',
 porque precedente bom é precedente confiante.
 
-Cada item referencia um arquivo em seed_images/. O seed.py deve, para cada
-chamado: compor a frase (defeitos_catalog.compor_frase), subir a imagem pro S3,
-embeddar (imagem + frase) com input_type="document" e inserir com status="resolvido".
+Cada item referencia um arquivo dentro de SEED_IMAGES_DIR (configurável via .env/
+variável de ambiente — ver config.py; este repo não vem com fotos de exemplo, use
+a sua própria pasta ou gere placeholders com generate_placeholders.py). O seed.py
+deve, para cada chamado: compor a frase (defeitos_catalog.compor_frase), subir a
+imagem pro storage, embeddar (imagem + frase) com input_type="document" e inserir
+com status="resolvido".
 """
 
 CHAMADOS_SEED = [

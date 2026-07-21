@@ -17,9 +17,11 @@ dist/
 # imagens (storage local do PoV)
 media/
 
-# fotos reais de catálogo (copyright do fabricante/varejista — nunca commitar).
-# rode generate_catalogo_placeholders.py pra ter placeholders sintéticos aqui.
-seed_images/catalogo/
+# fotos de seed — o repo não bundla fotos de exemplo; cada usuário aponta
+# SEED_IMAGES_DIR (.env) pra sua própria pasta, ou gera placeholders sintéticos
+# com generate_placeholders.py / generate_catalogo_placeholders.py. Nunca commitar
+# fotos reais de catálogo (copyright do fabricante/varejista).
+seed_images/
 
 # misc
 .DS_Store
