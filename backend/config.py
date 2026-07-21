@@ -44,6 +44,7 @@ EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIMENSIONS", "1024"))
 # --- Anthropic (Claude visão) ---
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 ANTHROPIC_MAX_TOKENS = int(os.getenv("ANTHROPIC_MAX_TOKENS", "1024"))
+ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL")
 
 # --- Armazenamento de imagens (local no PoV; trocar backend p/ S3 em prod) ---
 MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT", str(Path(__file__).resolve().parent / "media")))
