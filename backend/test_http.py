@@ -1,13 +1,20 @@
-"""Teste HTTP síncrono contra o uvicorn em :8100 (valida o servidor real)."""
+"""Teste HTTP síncrono contra o uvicorn em :8100 (valida o servidor real).
+
+Precisa de uma imagem de teste em SEED_IMAGES_DIR/cad_01.jpg (.env ou variável
+de ambiente — ver config.py). Este repo não vem com fotos de exemplo: rode
+`python generate_placeholders.py` primeiro, ou aponte SEED_IMAGES_DIR para uma
+pasta com suas próprias fotos.
+"""
 
 import sys
 import time
-from pathlib import Path
 
 import httpx
 
+import config
+
 BASE = "http://127.0.0.1:8100"
-SEED_IMAGES = Path(__file__).resolve().parents[1] / "seed_images"
+SEED_IMAGES = config.SEED_IMAGES_DIR
 
 
 def main():
@@ -26,7 +33,14 @@ def main():
         print("[lookup]", c.post("/api/lookup", json={"numero_pedido": "ped-90001"}).json())
         print("[checklist] itens:", len(c.get("/api/checklist/cadeira").json()["itens"]))
 
-        img = (SEED_IMAGES / "cad_01.jpg").read_bytes()
+        caminho_img = SEED_IMAGES / "cad_01.jpg"
+        if not caminho_img.exists():
+            sys.exit(
+                f"Imagem ausente: {caminho_img}.\n"
+                f"Rode 'python generate_placeholders.py' ou aponte SEED_IMAGES_DIR "
+                f"para uma pasta com suas próprias fotos."
+            )
+        img = caminho_img.read_bytes()
         r = c.post(
             "/api/analisar",
             files={"imagem": ("cad_01.jpg", img, "image/jpeg")},

@@ -3,13 +3,17 @@
 Nao sao fotos reais do produto — sao renders de estudio gerados por codigo
 (silhueta do movel + marca de defeito no proprio objeto), sem nenhum texto
 de aviso embutido na imagem. Isso evita que o modelo de visao veja um aviso
-tipo "placeholder" e desconte confianca por causa disso. Ainda assim, troque
-por fotos reais do catalogo do cliente (mesmos nomes de arquivo) assim que
-disponiveis — visualmente mais convincente para o cliente final.
+tipo "placeholder" e desconte confianca por causa disso. Este repo NAO vem
+com fotos de exemplo bundladas: use este script so para ter algo rodando
+rapido, e troque por fotos reais do catalogo do cliente (mesmos nomes de
+arquivo, na pasta apontada por SEED_IMAGES_DIR) assim que disponiveis —
+visualmente mais convincente para o cliente final.
 
 Uso (a partir de backend/):
     python generate_placeholders.py
-Gera os arquivos em ../seed_images/ com os nomes referenciados em seed_data.py.
+Gera os arquivos na pasta apontada por SEED_IMAGES_DIR (.env ou variavel de
+ambiente; default "../seed_images" relativo a backend/) com os nomes
+referenciados em seed_data.py.
 """
 
 import math
@@ -17,12 +21,14 @@ import os
 
 from PIL import Image, ImageDraw, ImageFilter
 
+import config
+
 try:
     from seed_data import CHAMADOS_SEED
 except ImportError as e:
     raise SystemExit("Rode a partir de backend/ (precisa importar seed_data.py).") from e
 
-OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "seed_images")
+OUT_DIR = str(config.SEED_IMAGES_DIR)
 W, H = 800, 600
 
 # Cor de fundo de estudio por categoria (gradiente sutil, sem texto).

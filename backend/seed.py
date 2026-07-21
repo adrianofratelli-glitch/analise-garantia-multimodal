@@ -9,13 +9,16 @@ Para cada item de CHAMADOS_SEED:
 Idempotente: replace_one(upsert) por numero_chamado. Os índices (vetorial, texto,
 regulares) são criados pelo setup_indexes.py.
 
+O repo não vem com fotos de exemplo. Aponte SEED_IMAGES_DIR (.env ou variável de
+ambiente) para uma pasta com os arquivos referenciados em seed_data.py
+(imagem_arquivo), ou gere placeholders com generate_placeholders.py.
+
     python seed.py
 """
 
 import io
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
 
 from PIL import Image
 from pymongo import MongoClient
@@ -27,7 +30,7 @@ from storage import upload_imagem
 from voyage import embed_multimodal
 
 NOW = datetime.now(UTC)
-SEED_IMAGES = Path(__file__).resolve().parents[1] / "seed_images"
+SEED_IMAGES = config.SEED_IMAGES_DIR
 
 
 def montar_documento(item: dict) -> dict:
@@ -35,7 +38,12 @@ def montar_documento(item: dict) -> dict:
     arquivo = item["imagem_arquivo"]
     caminho = SEED_IMAGES / arquivo
     if not caminho.exists():
-        sys.exit(f"Imagem ausente: {caminho}.")
+        sys.exit(
+            f"Imagem ausente: {caminho}.\n"
+            f"Este repo não vem com fotos de exemplo — aponte SEED_IMAGES_DIR (.env) "
+            f"para uma pasta com suas próprias fotos, ou rode "
+            f"'python generate_placeholders.py' para gerar placeholders sintéticos."
+        )
 
     with Image.open(caminho) as img:
         imagem = img.convert("RGB")

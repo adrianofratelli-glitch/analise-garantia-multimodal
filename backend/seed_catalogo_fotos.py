@@ -2,8 +2,12 @@
 verificação de identidade ("essa foto bate com o produto que o cliente comprou?").
 
 Para cada SKU em CATALOGO_PRODUTOS, embeda as N fotos em
-seed_images/catalogo/<sku>/1.jpg..N.jpg (input_type="document", mesma função
+<SEED_IMAGES_DIR>/catalogo/<sku>/1.jpg..N.jpg (input_type="document", mesma função
 usada em seed.py — contrato de consistência com o embed do runtime).
+
+O repo não vem com fotos de exemplo. Aponte SEED_IMAGES_DIR (.env ou variável de
+ambiente) para uma pasta própria com fotos reais do catálogo, ou gere placeholders
+com generate_catalogo_placeholders.py.
 
 Idempotente: replace_one(upsert) por (sku, foto_idx). Índice vetorial
 (catalogo_fotos_vector_index) é criado por setup_indexes.py.
@@ -13,7 +17,6 @@ Idempotente: replace_one(upsert) por (sku, foto_idx). Índice vetorial
 
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
 
 from PIL import Image
 from pymongo import MongoClient
@@ -24,7 +27,7 @@ from storage import upload_imagem
 from voyage import embed_multimodal
 
 NOW = datetime.now(UTC)
-SEED_IMAGES = Path(__file__).resolve().parents[1] / "seed_images" / "catalogo"
+SEED_IMAGES = config.SEED_IMAGES_DIR / "catalogo"
 
 
 def montar_documento(produto: dict, foto_idx: int) -> dict:

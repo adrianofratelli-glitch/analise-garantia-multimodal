@@ -7,8 +7,11 @@ e grava em `catalogo_fotos`. Em runtime, a foto do cliente é comparada via
 $vectorSearch contra as fotos do SKU do pedido — score baixo = produto
 provavelmente errado/divergente, não necessariamente "sem defeito".
 
-Arquivos esperados em seed_images/catalogo/<sku>/1.jpg .. N.jpg (numeração
+Arquivos esperados em <SEED_IMAGES_DIR>/catalogo/<sku>/1.jpg .. N.jpg (numeração
 sequencial, sem buracos — n_fotos abaixo tem que bater com o que existe na pasta).
+SEED_IMAGES_DIR é configurável via .env/variável de ambiente (ver config.py);
+este repo não vem com fotos de exemplo — use a sua própria pasta ou gere
+placeholders com generate_catalogo_placeholders.py.
 """
 
 CATALOGO_PRODUTOS = [

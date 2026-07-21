@@ -49,3 +49,11 @@ ANTHROPIC_MAX_TOKENS = int(os.getenv("ANTHROPIC_MAX_TOKENS", "1024"))
 MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT", str(Path(__file__).resolve().parent / "media")))
 MEDIA_URL_PREFIX = os.getenv("MEDIA_URL_PREFIX", "/media")
 MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(10 * 1024 * 1024)))  # 10 MB
+
+# --- Fotos de seed (fornecidas pelo usuário, não versionadas no repo) ---
+# O repo não vem com fotos de exemplo: quem roda o PoV deve apontar SEED_IMAGES_DIR
+# para uma pasta própria (mesma estrutura esperada por seed.py/seed_catalogo_fotos.py/
+# generate_placeholders*.py). Default abaixo é só uma convenção de nome de pasta.
+SEED_IMAGES_DIR = Path(
+    os.getenv("SEED_IMAGES_DIR", str(Path(__file__).resolve().parents[1] / "seed_images"))
+)

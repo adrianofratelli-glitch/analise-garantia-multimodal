@@ -1,22 +1,27 @@
 """Gera fotos sinteticas de referencia do catalogo (N por SKU, sem defeito).
 
 Renders de estudio por codigo, sem nenhum texto de aviso embutido na imagem
-(evita que o modelo de visao veja "placeholder" e desconte confianca). Troque
-por fotos reais do catalogo do cliente assim que disponiveis: mesmo caminho
-(seed_images/catalogo/<sku>/1.jpg .. N.jpg), depois rode seed_catalogo_fotos.py.
+(evita que o modelo de visao veja "placeholder" e desconte confianca). Este
+repo NAO vem com fotos de exemplo bundladas — troque por fotos reais do
+catalogo do cliente assim que disponiveis: mesmo caminho
+(<SEED_IMAGES_DIR>/catalogo/<sku>/1.jpg .. N.jpg), depois rode
+seed_catalogo_fotos.py.
 
 Uso (a partir de backend/):
     python generate_catalogo_placeholders.py
+Gera os arquivos na pasta apontada por SEED_IMAGES_DIR (.env ou variavel de
+ambiente; default "../seed_images" relativo a backend/).
 """
 
 import os
 
 from PIL import Image, ImageDraw, ImageFilter
 
+import config
 from catalogo_produtos_data import CATALOGO_PRODUTOS
 from generate_placeholders import _shadow, _silhueta, _studio_bg
 
-OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "seed_images", "catalogo")
+OUT_DIR = str(config.SEED_IMAGES_DIR / "catalogo")
 W, H = 800, 600
 
 COR_CATEGORIA = {
