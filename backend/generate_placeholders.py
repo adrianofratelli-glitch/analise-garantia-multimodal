@@ -16,7 +16,6 @@ ambiente; default "../seed_images" relativo a backend/) com os nomes
 referenciados em seed_data.py.
 """
 
-import math
 import os
 
 from PIL import Image, ImageDraw, ImageFilter

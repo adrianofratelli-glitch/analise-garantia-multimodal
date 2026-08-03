@@ -15,7 +15,7 @@ ambiente; default "../seed_images" relativo a backend/).
 
 import os
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import ImageDraw, ImageFilter
 
 import config
 from catalogo_produtos_data import CATALOGO_PRODUTOS
