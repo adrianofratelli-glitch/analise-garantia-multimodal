@@ -18,13 +18,13 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from bson import ObjectId
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import config
 import observability
@@ -71,6 +71,11 @@ async def api_metrics():
     """In-process counters: requests/errors/latency per route + business counters."""
     return observability.metrics.snapshot()
 
+
+@app.get("/metrics", include_in_schema=False)
+async def prometheus_metrics():
+    return Response(observability.metrics.prometheus(), media_type="text/plain; version=0.0.4")
+
 # Imagens servidas localmente (PoV). Em prod, trocar storage.py por S3 + CDN.
 config.MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 app.mount(config.MEDIA_URL_PREFIX, StaticFiles(directory=str(config.MEDIA_ROOT)), name="media")
@@ -108,6 +113,11 @@ async def health():
     }
 
 
+@app.get("/health/live")
+async def liveness():
+    return {"status": "alive"}
+
+
 async def _counts_por_status(col) -> dict:
     rows = await safe_query(
         col.aggregate(
@@ -131,7 +141,7 @@ async def listar_pedidos():
 
 
 class LookupBody(BaseModel):
-    numero_pedido: str
+    numero_pedido: str = Field(..., min_length=1, max_length=80)
 
 
 @app.post("/api/lookup")
@@ -174,14 +184,20 @@ async def _ler_e_normalizar(upload: UploadFile) -> tuple[Image.Image, bytes]:
     """Valida, lê e normaliza um UploadFile para JPEG (mesmo contrato da foto principal)."""
     if upload.content_type not in ALLOWED_MEDIA:
         raise SafeQueryError("imagem", f"Formato '{upload.content_type}' não aceito. Envie JPEG ou PNG.")
-    imagem_bytes = await upload.read()
+    imagem_bytes = await upload.read(config.MAX_IMAGE_BYTES + 1)
     if not imagem_bytes:
         raise SafeQueryError("imagem", "Nenhuma imagem recebida.")
     if len(imagem_bytes) > config.MAX_IMAGE_BYTES:
         mb = config.MAX_IMAGE_BYTES // (1024 * 1024)
         raise SafeQueryError("imagem", f"Imagem maior que o limite de {mb} MB.")
     try:
-        pil = Image.open(io.BytesIO(imagem_bytes)).convert("RGB")
+        source = Image.open(io.BytesIO(imagem_bytes))
+        if source.width * source.height > config.MAX_IMAGE_PIXELS:
+            raise SafeQueryError(
+                "imagem",
+                f"Imagem excede o limite de {config.MAX_IMAGE_PIXELS:,} pixels.",
+            )
+        pil = source.convert("RGB")
     except (UnidentifiedImageError, OSError) as e:
         raise SafeQueryError("imagem", "Arquivo enviado não é uma imagem válida.") from e
     # Normaliza TUDO para JPEG: garante que o media_type bate com os bytes e que o
@@ -193,6 +209,35 @@ async def _ler_e_normalizar(upload: UploadFile) -> tuple[Image.Image, bytes]:
     _buf = io.BytesIO()
     pil.save(_buf, format="JPEG", quality=90)
     return pil, _buf.getvalue()
+
+
+def _validar_entrada_analise(
+    numero_pedido: str,
+    sku: str,
+    descricao: str,
+    checklist: list[str],
+    fotos_extra_itens: list[str],
+    tabela: dict[str, str],
+) -> tuple[list[str], list[str]]:
+    if not numero_pedido.strip() or len(numero_pedido) > 80:
+        raise HTTPException(status_code=422, detail="numero_pedido inválido")
+    if not sku.strip() or len(sku) > 120:
+        raise HTTPException(status_code=422, detail="sku inválido")
+    if len(descricao) > config.MAX_DESCRIPTION_CHARS:
+        raise HTTPException(status_code=422, detail="descrição excede o limite permitido")
+    if len(fotos_extra_itens) > config.MAX_EXTRA_IMAGES:
+        raise HTTPException(status_code=422, detail="quantidade de fotos extras excede o limite")
+
+    normalized_checklist = [item.strip() for item in checklist]
+    normalized_extra_items = [item.strip() for item in fotos_extra_itens]
+    if len(normalized_checklist) != len(set(normalized_checklist)):
+        raise HTTPException(status_code=422, detail="checklist contém itens duplicados")
+    unknown = set(normalized_checklist) - set(tabela)
+    if unknown:
+        raise HTTPException(status_code=422, detail="checklist contém item desconhecido")
+    if not set(normalized_extra_items).issubset(normalized_checklist):
+        raise HTTPException(status_code=422, detail="foto extra deve referenciar um item marcado")
+    return normalized_checklist, normalized_extra_items
 
 
 @app.post("/api/analisar")
@@ -213,7 +258,14 @@ async def analisar(
     categoria = produto["categoria"]
 
     if len(fotos_extra) != len(fotos_extra_itens):
-        raise SafeQueryError("imagem", "Cada foto extra precisa estar associada a exatamente um item do checklist.")
+        raise HTTPException(status_code=422, detail="Cada foto extra precisa estar associada a exatamente um item do checklist.")
+
+    tabela = await _tabela_catalogo(categoria)
+    checklist, fotos_extra_itens = _validar_entrada_analise(
+        numero_pedido, sku, descricao, checklist, fotos_extra_itens, tabela
+    )
+    if modo not in {"vector", "hybrid"}:
+        raise HTTPException(status_code=422, detail="modo deve ser vector ou hybrid")
 
     pil, imagem_jpeg = await _ler_e_normalizar(imagem)
     media_type = "image/jpeg"
@@ -225,8 +277,6 @@ async def analisar(
         "descricao_cliente": descricao,
     }
     frase = compor_frase(chamado)
-    tabela = await _tabela_catalogo(categoria)
-
     numero_chamado = f"CHM-{datetime.now(UTC).year}-{uuid4().hex[:6].upper()}"
     key = f"chamados/{numero_chamado}/foto.jpg"
     # Upload em task paralela: não bloqueia o caminho crítico (embedding → RAG →
@@ -358,25 +408,36 @@ async def chamados_pendentes():
 
 
 class RevisarBody(BaseModel):
-    numero_chamado: str
-    resolucao_final: str
+    numero_chamado: str = Field(..., min_length=1, max_length=80)
+    resolucao_final: str = Field(..., min_length=1, max_length=2000)
+    reviewer: str = Field("demo-user", min_length=1, max_length=120)
 
 
 @app.post("/api/revisar")
 async def revisar(body: RevisarBody):
     res = await safe_query(
         chamados().update_one(
-            {"numero_chamado": body.numero_chamado},
+            {"numero_chamado": body.numero_chamado, "status": "em_analise"},
             {"$set": {
                 "resolucao_final": body.resolucao_final,
                 "status": "resolvido",
                 "veredito.revisao_humana": True,
+                "reviewer": body.reviewer,
                 "revisado_at": datetime.now(UTC),
             }},
         )
     )
     if res.matched_count == 0:
-        raise SafeQueryError("config", f"Chamado {body.numero_chamado} não encontrado.")
+        existing = await safe_query(
+            chamados().find_one(
+                {"numero_chamado": body.numero_chamado},
+                {"_id": 1, "status": 1},
+                max_time_ms=config.MAX_TIME_MS,
+            )
+        )
+        if existing:
+            raise HTTPException(status_code=409, detail="Chamado já foi revisado.")
+        raise HTTPException(status_code=404, detail=f"Chamado {body.numero_chamado} não encontrado.")
     doc = await safe_query(
         chamados().find_one({"numero_chamado": body.numero_chamado}, {"embedding": 0}, max_time_ms=config.MAX_TIME_MS)
     )

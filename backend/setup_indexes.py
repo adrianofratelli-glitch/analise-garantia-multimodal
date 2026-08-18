@@ -11,6 +11,7 @@ permissão não permitir, imprime o JSON para criar no Atlas UI.
 """
 
 import json
+import os
 import sys
 
 from pymongo import ASCENDING, DESCENDING, MongoClient
@@ -21,8 +22,8 @@ import config
 
 # $jsonSchema — governance nativa do MongoDB: mesmo sendo schemaless por
 # padrão, o Atlas valida forma/tipo de documento no servidor sem precisar de
-# camada externa (ORM/Zod/etc). validationAction="warn" pra não travar a demo
-# se um seed antigo não bater 100% — mas o campo aparece em db.getCollectionInfos().
+# camada externa (ORM/Zod/etc). O padrão bloqueia novos documentos inválidos;
+# VALIDATION_ACTION=warn existe apenas para migração explícita de seeds antigos.
 CHAMADOS_SCHEMA = {
     "$jsonSchema": {
         "bsonType": "object",
@@ -96,8 +97,11 @@ TEXT_DEF = {
 def _apply_validator(db, coll_name, schema):
     """collMod com $jsonSchema — funciona em collection já existente (seed roda antes)."""
     try:
-        db.command("collMod", coll_name, validator=schema, validationLevel="moderate", validationAction="warn")
-        print(f"✓ $jsonSchema aplicado em '{coll_name}' (validationAction=warn — não bloqueia, só avisa)")
+        action = os.getenv("VALIDATION_ACTION", "error")
+        if action not in {"error", "warn"}:
+            raise ValueError("VALIDATION_ACTION deve ser error ou warn")
+        db.command("collMod", coll_name, validator=schema, validationLevel="moderate", validationAction=action)
+        print(f"✓ $jsonSchema aplicado em '{coll_name}' (validationAction={action})")
     except OperationFailure as e:
         print(f"⚠ não foi possível aplicar $jsonSchema em '{coll_name}': {str(e)[:120]}")
 

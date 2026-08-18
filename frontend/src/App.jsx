@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
-import Portal from './tabs/Portal.jsx';
-import Revisao from './tabs/Revisao.jsx';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { api } from './api.js';
+
+const Portal = lazy(() => import('./tabs/Portal.jsx'));
+const Revisao = lazy(() => import('./tabs/Revisao.jsx'));
 
 const TABS = ['01 · Portal de Garantia', '02 · Revisão Humana'];
 
 export default function App() {
   const [selected, setSelected] = useState(0);
+  const [visited, setVisited] = useState(() => new Set([0]));
 
   // estado elevado: trocar de aba não apaga o resultado da análise nem a revisão.
   const [portalState, setPortalState] = useState({ resultado: null, step: 0 });
@@ -18,6 +20,7 @@ export default function App() {
   useEffect(() => {
     let alive = true;
     const tick = async () => {
+      if (document.visibilityState !== 'visible') return;
       try {
         const h = await api.health();
         if (alive) {
@@ -37,9 +40,14 @@ export default function App() {
   }, []);
 
   const panes = [
-    <Portal state={portalState} setState={setPortalState} goRevisar={() => setSelected(1)} />,
-    <Revisao state={revisaoState} setState={setRevisaoState} />,
+    <Portal state={portalState} setState={setPortalState} goRevisar={() => selectTab(1)} />,
+    <Revisao state={revisaoState} setState={setRevisaoState} active={selected === 1} />,
   ];
+
+  const selectTab = (index) => {
+    setVisited((current) => new Set(current).add(index));
+    setSelected(index);
+  };
 
   const counts = health?.counts ?? {};
 
@@ -55,7 +63,7 @@ export default function App() {
               <button
                 key={name}
                 className={`nav-pill ${i === selected ? 'active' : ''}`}
-                onClick={() => setSelected(i)}
+                onClick={() => selectTab(i)}
               >
                 {name}
               </button>
@@ -106,9 +114,11 @@ export default function App() {
           </div>
         </div>
 
-        {panes.map((pane, i) => (
+        {panes.map((pane, i) => visited.has(i) && (
           <div key={i} style={{ display: i === selected ? 'block' : 'none' }}>
-            <div className={i === selected ? 'fade-in' : ''}>{pane}</div>
+            <Suspense fallback={<div className="card">Carregando etapa…</div>}>
+              <div className={i === selected ? 'fade-in' : ''}>{pane}</div>
+            </Suspense>
           </div>
         ))}
       </main>

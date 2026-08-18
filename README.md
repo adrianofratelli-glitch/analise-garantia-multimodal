@@ -80,6 +80,8 @@ export SEED_IMAGES_DIR=/caminho/para/suas/fotos     # ou defina no .env
 cd backend && ./.venv/bin/python test_http.py   # smoke test do pipeline completo
 ```
 
+Por padrão, o launcher serve o build otimizado do frontend sem watcher. Para editar com HMR, rode `POV_DEV=1 ./start.sh`; o build só é refeito quando as fontes ou a configuração mudam.
+
 ```bash
 cd backend
 ./.venv/bin/pip install -r requirements-dev.txt

@@ -17,6 +17,16 @@ import config
 URI_SCHEME = "file://"
 
 
+def _safe_path(key: str) -> Path:
+    """Resolve a storage key below MEDIA_ROOT and reject traversal/absolute paths."""
+    relative = key.removeprefix(URI_SCHEME).lstrip("/")
+    root = config.MEDIA_ROOT.resolve()
+    destination = (root / relative).resolve()
+    if not destination.is_relative_to(root) or destination == root:
+        raise ValueError("invalid media storage key")
+    return destination
+
+
 def upload_imagem(imagem_bytes: bytes, key: str, content_type: str) -> tuple[str, str]:
     """Grava os bytes em MEDIA_ROOT/<key>.
 
@@ -24,7 +34,7 @@ def upload_imagem(imagem_bytes: bytes, key: str, content_type: str) -> tuple[str
     (/media/<key>) é o que o frontend usa no <img src>.
     `content_type` é aceito por compatibilidade de interface (não usado em disco).
     """
-    dest = config.MEDIA_ROOT / key
+    dest = _safe_path(key)
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(imagem_bytes)
     return f"{URI_SCHEME}{key}", url_for(f"{URI_SCHEME}{key}")
@@ -33,8 +43,9 @@ def upload_imagem(imagem_bytes: bytes, key: str, content_type: str) -> tuple[str
 def url_for(uri: str) -> str:
     """Converte uma uri file://<key> na URL pública servida pelo FastAPI."""
     key = uri.removeprefix(URI_SCHEME).lstrip("/")
+    _safe_path(key)
     return f"{config.MEDIA_URL_PREFIX}/{key}"
 
 
 def path_for(key: str) -> Path:
-    return config.MEDIA_ROOT / key.removeprefix(URI_SCHEME).lstrip("/")
+    return _safe_path(key)

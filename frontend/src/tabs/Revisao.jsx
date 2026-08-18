@@ -15,7 +15,7 @@ const SUGESTAO = {
   inconclusivo: 'Solicitar mais fotos ao cliente — analise inconclusiva.',
 };
 
-export default function Revisao({ state, setState }) {
+export default function Revisao({ state, setState, active = true }) {
   const { pendentes, selecionado } = state;
   const [resolucao, setResolucao] = useState('');
   const [busy, setBusy] = useState(false);
@@ -45,12 +45,28 @@ export default function Revisao({ state, setState }) {
   // Change Streams (SSE) — fila atualiza sozinha quando um novo chamado chega,
   // sem polling. Demonstra real-time operacional nativo do MongoDB.
   useEffect(() => {
-    const es = new EventSource('/api/chamados/stream');
-    es.onopen = () => setLive(true);
-    es.onerror = () => setLive(false);
-    es.onmessage = () => carregar();
-    return () => es.close();
-  }, []);
+    if (!active) return undefined;
+    let es;
+    const syncConnection = () => {
+      if (document.visibilityState !== 'visible') {
+        es?.close();
+        es = undefined;
+        setLive(false);
+        return;
+      }
+      if (es) return;
+      es = new EventSource('/api/chamados/stream');
+      es.onopen = () => setLive(true);
+      es.onerror = () => setLive(false);
+      es.onmessage = () => carregar();
+    };
+    syncConnection();
+    document.addEventListener('visibilitychange', syncConnection);
+    return () => {
+      document.removeEventListener('visibilitychange', syncConnection);
+      es?.close();
+    };
+  }, [active]);
 
   const selecionar = (c) => {
     setOk(null);

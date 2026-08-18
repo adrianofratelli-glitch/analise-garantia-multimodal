@@ -50,6 +50,9 @@ ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL")
 MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT", str(Path(__file__).resolve().parent / "media")))
 MEDIA_URL_PREFIX = os.getenv("MEDIA_URL_PREFIX", "/media")
 MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(10 * 1024 * 1024)))  # 10 MB
+MAX_IMAGE_PIXELS = int(os.getenv("MAX_IMAGE_PIXELS", "25000000"))
+MAX_EXTRA_IMAGES = int(os.getenv("MAX_EXTRA_IMAGES", "6"))
+MAX_DESCRIPTION_CHARS = int(os.getenv("MAX_DESCRIPTION_CHARS", "4000"))
 
 # --- Fotos de seed (fornecidas pelo usuário, não versionadas no repo) ---
 # O repo não vem com fotos de exemplo: quem roda o PoV deve apontar SEED_IMAGES_DIR

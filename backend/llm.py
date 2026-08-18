@@ -10,6 +10,7 @@ conservador por design — na dúvida, "inconclusivo". Modelo/limites vêm do co
 """
 
 import base64
+import logging
 import os
 import time
 
@@ -18,10 +19,14 @@ from anthropic import AsyncAnthropic
 import config
 import observability
 
+logger = logging.getLogger("mm_garantia.llm")
+
 client = AsyncAnthropic(
     api_key="dummy",  # SDK exige valor não-vazio; auth real vai no header api-key abaixo
     base_url=config.ANTHROPIC_BASE_URL,
     default_headers={"api-key": os.getenv("ANTHROPIC_API_KEY", "")},
+    timeout=float(os.getenv("ANTHROPIC_TIMEOUT_SECONDS", "45")),
+    max_retries=int(os.getenv("ANTHROPIC_MAX_RETRIES", "2")),
 )  # Grove/Azure APIM espera header "api-key", não "x-api-key" (o que api_key= geraria)
 MODEL = config.ANTHROPIC_MODEL
 
@@ -70,9 +75,40 @@ VEREDITO_TOOL = {
 _FALLBACK = {
     "classificacao": "inconclusivo",
     "confianca": 0.0,
-    "racional": "O modelo não retornou um veredito estruturado.",
+    "racional": (
+        "A triagem automática não ficou disponível. O caso foi preservado e "
+        "encaminhado para revisão humana sem presumir a causa do defeito."
+    ),
     "sinais_observados": [],
 }
+
+_CLASSIFICACOES = {"defeito_fabrica", "defeito_transporte", "mau_uso", "inconclusivo"}
+
+
+def _normalizar_veredito(value, *, meta: dict) -> dict:
+    """Enforce the business contract even if the provider returns malformed tool input."""
+    veredito = dict(value) if isinstance(value, dict) else dict(_FALLBACK)
+    valid_classification = veredito.get("classificacao") in _CLASSIFICACOES
+    if not valid_classification:
+        veredito["classificacao"] = "inconclusivo"
+    try:
+        veredito["confianca"] = max(0.0, min(1.0, float(veredito.get("confianca", 0.0))))
+    except (TypeError, ValueError):
+        veredito["confianca"] = 0.0
+    if not valid_classification:
+        veredito["confianca"] = 0.0
+    racional = veredito.get("racional")
+    veredito["racional"] = (
+        str(racional).strip()[:1000] if racional else _FALLBACK["racional"]
+    )
+    sinais = veredito.get("sinais_observados")
+    veredito["sinais_observados"] = (
+        [str(item).strip()[:300] for item in sinais[:12] if str(item).strip()]
+        if isinstance(sinais, list) else []
+    )
+    veredito["revisao_humana"] = True
+    veredito["_meta"] = meta
+    return veredito
 
 
 def _montar_contexto(precedentes: list[dict]) -> str:
@@ -123,15 +159,29 @@ async def analisar_veredito(
     content.append({"type": "text", "text": user_text})
 
     start = time.perf_counter()
-    resp = await client.messages.create(
-        model=MODEL,
-        max_tokens=config.ANTHROPIC_MAX_TOKENS,
-        temperature=0.2,
-        system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
-        tools=[VEREDITO_TOOL],
-        tool_choice={"type": "tool", "name": "emitir_veredito"},
-        messages=[{"role": "user", "content": content}],
-    )
+    try:
+        resp = await client.messages.create(
+            model=MODEL,
+            max_tokens=config.ANTHROPIC_MAX_TOKENS,
+            temperature=0.2,
+            system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
+            tools=[VEREDITO_TOOL],
+            tool_choice={"type": "tool", "name": "emitir_veredito"},
+            messages=[{"role": "user", "content": content}],
+        )
+    except Exception:  # noqa: BLE001 — human-review fallback is the safe outcome
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        logger.exception("Claude verdict unavailable; preserving case for human review")
+        observability.metrics.bump("verdict_manual_review_fallback")
+        return _normalizar_veredito(
+            _FALLBACK,
+            meta={
+                "model": MODEL,
+                "mode": "manual_review_fallback",
+                "latency_ms": latency_ms,
+                "precedentes_usados": len(precedentes),
+            },
+        )
     latency_ms = int((time.perf_counter() - start) * 1000)
 
     observability.metrics.bump("anthropic_input_tokens", resp.usage.input_tokens)
@@ -140,22 +190,13 @@ async def analisar_veredito(
     observability.metrics.bump("anthropic_cache_write_tokens", getattr(resp.usage, "cache_creation_input_tokens", 0) or 0)
 
     tool_input = next((b.input for b in resp.content if b.type == "tool_use"), None)
-    veredito = dict(tool_input) if isinstance(tool_input, dict) else dict(_FALLBACK)
-
-    # invariantes de segurança/negócio
-    try:
-        veredito["confianca"] = max(0.0, min(1.0, float(veredito.get("confianca", 0.0))))
-    except (TypeError, ValueError):
-        veredito["confianca"] = 0.0
-    veredito.setdefault("sinais_observados", [])
-    veredito["revisao_humana"] = True
-    veredito["_meta"] = {
+    return _normalizar_veredito(tool_input, meta={
         "model": resp.model,
+        "mode": "claude_tool_use",
         "latency_ms": latency_ms,
         "input_tokens": resp.usage.input_tokens,
         "output_tokens": resp.usage.output_tokens,
         "cache_read_tokens": getattr(resp.usage, "cache_read_input_tokens", 0),
         "cache_write_tokens": getattr(resp.usage, "cache_creation_input_tokens", 0),
         "precedentes_usados": len(precedentes),
-    }
-    return veredito
+    })
