@@ -1,26 +1,26 @@
-# Multimodal Warranty Triage
+# Triagem multimodal de garantia
 
-Any retailer shipping physical products gets thousands of warranty claims: a photo, a vague description ("it arrived broken"), and an analyst who has to decide — factory defect, shipping damage, or misuse? Triage is slow, inconsistent between analysts, and everything already resolved stays locked in spreadsheets. And nothing guarantees the uploaded photo is even of the purchased product.
+Todo varejista que envia produtos físicos recebe milhares de acionamentos de garantia: uma foto, uma descrição vaga ("chegou quebrado") e um analista que precisa decidir — defeito de fábrica, avaria de transporte ou mau uso? A triagem é lenta, inconsistente entre analistas, e tudo o que já foi resolvido continua preso em planilhas. E nada garante que a foto enviada seja sequer do produto comprado.
 
-This PoV triages the claim with multimodal AI, with MongoDB Atlas as the engine behind every layer: Voyage for the embeddings, Claude for the verdict, a human for the decision.
+Esta PoV faz a triagem do acionamento com IA multimodal, tendo o MongoDB Atlas como motor por trás de todas as camadas: Voyage para os embeddings, Claude para o veredito, um humano para a decisão.
 
-## The demo in 4 steps
+## A demo em 4 passos
 
-**1. The customer opens a claim.** Order number, symptom checklist, description, photo. Pre-loaded scenarios (including two where the photo doesn't match the product) make it one click.
+**1. O cliente abre um chamado.** Número do pedido, checklist de sintomas, descrição, foto. Cenários pré-carregados (incluindo dois em que a foto não corresponde ao produto) deixam isso a um clique.
 
-![Warranty portal with the scenario shortcuts, order, checklist and photo](docs/screenshots/01-portal.png)
+![Portal de garantia com os atalhos de cenário, pedido, checklist e foto](docs/screenshots/01-portal.png)
 
-**2. Is this even the right product?** The photo is embedded and compared against reference photos of the *entire* catalog. The signal is relative — the ordered product must be the best match among all of them. An absolute threshold alone would let the wrong product through, since studio photos score high against each other anyway.
+**2. Isto é sequer o produto certo?** A foto vira embedding e é comparada com as fotos de referência do catálogo *inteiro*. O sinal é relativo — o produto pedido precisa ser o melhor match entre todos eles. Um limiar absoluto sozinho deixaria passar o produto errado, já que fotos de estúdio pontuam alto umas contra as outras de qualquer jeito.
 
-**3. Precedents, then a structured verdict.** `$vectorSearch` (or hybrid `$rankFusion`) retrieves resolved cases similar to this one, and Claude classifies the probable cause with *forced tool use* — structured output, no fragile JSON parsing off free text.
+**3. Precedentes, e então um veredito estruturado.** O `$vectorSearch` (ou o híbrido `$rankFusion`) recupera chamados resolvidos parecidos com este, e o Claude classifica a causa provável com *uso forçado de ferramenta* — saída estruturada, sem parsing frágil de JSON em texto livre.
 
-![Pipeline steps, the identity check score, and the structured verdict with its reasoning](docs/screenshots/02-verdict.png)
+![Etapas do pipeline, o score de checagem de identidade e o veredito estruturado com o raciocínio](docs/screenshots/02-verdict.png)
 
-The run above is a good example of the model not bluffing: the uploaded photo was a catalog shot with no visible damage, so the verdict came back **inconclusive at 35% confidence**, saying exactly that and asking for a photo of the actual defect.
+A execução acima é um bom exemplo do modelo não blefando: a foto enviada era uma imagem de catálogo sem dano visível, então o veredito voltou **inconclusivo com 35% de confiança**, dizendo exatamente isso e pedindo uma foto do defeito real.
 
-**4. A human decides.** Every verdict is born `em_analise`; only a person promotes it to `resolvido` — a consumer-protection requirement in Brazil. Each confirmed case becomes a precedent for the next ones. The queue updates through a Change Stream, no polling.
+**4. Um humano decide.** Todo veredito nasce `em_analise`; só uma pessoa o promove a `resolvido` — exigência do direito do consumidor no Brasil. Cada chamado confirmado vira precedente para os próximos. A fila se atualiza por um Change Stream, sem polling.
 
-![Human review queue fed live by a Change Stream](docs/screenshots/03-review.png)
+![Fila de revisão humana alimentada ao vivo por um Change Stream](docs/screenshots/03-review.png)
 
 ```mermaid
 flowchart LR
@@ -33,57 +33,57 @@ flowchart LR
     G --> H[human review] --> I[(resolved → becomes a precedent)]
 ```
 
-> Screenshots run against a live cluster with a demo catalog; the retailer's name is replaced with a neutral one.
+> Os screenshots rodam contra um cluster real com um catálogo de demonstração; o nome do varejista foi trocado por um nome neutro.
 
-## MongoDB behind every layer
+## MongoDB por trás de cada camada
 
-| Layer | Where it lives |
+| Camada | Onde vive |
 |---|---|
-| Order lookup | `pedidos` |
-| Defect checklist | `catalogo` |
-| Cases + verdict + embedding | `chamados` |
-| Catalog reference photos | `catalogo_fotos` |
-| Semantic search | Vector Search (`defeitos_vector_index`) |
-| Hybrid search | `$rankFusion` + Atlas Search (`chamados_text_index`) |
-| Live review queue | Change Streams over SSE |
-| Analytics | Aggregation Pipeline (Atlas Charts-ready) |
-| Schema governance | `$jsonSchema` validators |
+| Busca do pedido | `pedidos` |
+| Checklist de defeitos | `catalogo` |
+| Chamados + veredito + embedding | `chamados` |
+| Fotos de referência do catálogo | `catalogo_fotos` |
+| Busca semântica | Vector Search (`defeitos_vector_index`) |
+| Busca híbrida | `$rankFusion` + Atlas Search (`chamados_text_index`) |
+| Fila de revisão ao vivo | Change Streams por SSE |
+| Analytics | Aggregation Pipeline (pronto para Atlas Charts) |
+| Governança de schema | validadores `$jsonSchema` |
 
-Image blobs stay **outside** MongoDB — the correct blob pattern. In the PoV they sit on local disk (`backend/media/`); in production you reimplement `storage.py` with S3 + CDN and the `(uri, url)` interface doesn't change.
+Os blobs de imagem ficam **fora** do MongoDB — o padrão correto para blobs. Na PoV eles ficam no disco local (`backend/media/`); em produção você reimplementa o `storage.py` com S3 + CDN e a interface `(uri, url)` não muda.
 
-**Stack:** FastAPI + Motor · Voyage `voyage-multimodal-3.5` (1024d) · Claude with forced tool use · React + Vite + LeafyGreen. Everything (DB, collections, indexes, models) is parameterized in `.env` — see `.env.example`, and never commit a real one.
+**Stack:** FastAPI + Motor · Voyage `voyage-multimodal-3.5` (1024d) · Claude com uso forçado de ferramenta · React + Vite + LeafyGreen. Tudo (banco, coleções, índices, modelos) é parametrizado no `.env` — veja o `.env.example`, e nunca commite um `.env` real.
 
 ## Setup
 
-The repo ships no seed photos on purpose — bring your own so the demo reflects a real catalog instead of stock "damaged product" images.
+O repositório não traz fotos de seed de propósito — use as suas, para que a demo reflita um catálogo real em vez de imagens genéricas de "produto danificado".
 
 ```bash
 cd backend
 python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
-export SEED_IMAGES_DIR=/path/to/your/photos     # or set it in .env
+export SEED_IMAGES_DIR=/caminho/para/suas/fotos     # ou defina no .env
 
-# expected layout: cad_01.jpg … and catalogo/<sku>/1.jpg … N.jpg
-./.venv/bin/python seed_meta.py             # orders + checklist
-./.venv/bin/python seed.py                  # 15 resolved cases (embeds their images)
-./.venv/bin/python seed_catalogo_fotos.py   # reference photos per SKU
-./.venv/bin/python setup_indexes.py         # indexes + $jsonSchema
+# layout esperado: cad_01.jpg … e catalogo/<sku>/1.jpg … N.jpg
+./.venv/bin/python seed_meta.py             # pedidos + checklist
+./.venv/bin/python seed.py                  # 15 chamados resolvidos (gera embeddings das imagens)
+./.venv/bin/python seed_catalogo_fotos.py   # fotos de referência por SKU
+./.venv/bin/python setup_indexes.py         # índices + $jsonSchema
 
-# no photos yet? synthetic placeholders:
+# ainda sem fotos? placeholders sintéticos:
 ./.venv/bin/python generate_placeholders.py
 ./.venv/bin/python generate_catalogo_placeholders.py
 ```
 
-## Run
+## Execução
 
 ```bash
 ./start.sh                                  # backend :8100 + frontend :5190
-cd backend && ./.venv/bin/python test_http.py   # full-pipeline smoke test
+cd backend && ./.venv/bin/python test_http.py   # smoke test do pipeline completo
 ```
 
 ```bash
 cd backend
 ./.venv/bin/pip install -r requirements-dev.txt
-./.venv/bin/pytest        # unit tests, no Atlas or network
+./.venv/bin/pytest        # testes unitários, sem Atlas nem rede
 ./.venv/bin/ruff check .
 ```
 
@@ -91,13 +91,17 @@ Docker: `docker build -t mm-garantia . && docker run --env-file .env -p 18081:80
 
 ## Endpoints
 
-| Method | Route | What |
+| Método | Rota | O quê |
 |---|---|---|
-| POST | `/api/lookup` | order → products |
-| GET | `/api/checklist/{categoria}` | checklist items |
-| POST | `/api/analisar` | full pipeline; `modo=vector` or `hybrid` |
-| GET | `/api/chamados/pendentes` | review queue |
-| POST | `/api/revisar` | human review → resolved |
-| GET | `/api/analytics` | aggregations |
+| POST | `/api/lookup` | pedido → produtos |
+| GET | `/api/checklist/{categoria}` | itens do checklist |
+| POST | `/api/analisar` | pipeline completo; `modo=vector` ou `hybrid` |
+| GET | `/api/chamados/pendentes` | fila de revisão |
+| POST | `/api/revisar` | revisão humana → resolvido |
+| GET | `/api/analytics` | agregações |
 | GET | `/api/chamados/stream` | Change Stream (SSE) |
-| GET | `/api/health` · `/api/metrics` | ping + counts · latency, tokens |
+| GET | `/api/health` · `/api/metrics` | ping + contagens · latência, tokens |
+
+## Fronteira de produção
+
+Os uploads são limitados por bytes, quantidade de pixels, número de imagens e tamanho da descrição; IDs de checklist e caminhos de armazenamento passam por allowlist. A imagem roda como UID 10001 atrás de uma configuração nginx com cabeçalhos de segurança. A autenticação está intencionalmente fora desta PoV: exponha-a apenas atrás de um IdP/API gateway com TLS, cotas de requisição e armazenamento de objetos no lugar do diretório de mídia local.
