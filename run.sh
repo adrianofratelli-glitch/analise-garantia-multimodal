@@ -48,7 +48,7 @@ for _ in $(seq 1 40); do
      && curl -fsS http://127.0.0.1:8100/api/health >/dev/null 2>&1; then
     echo ""
     echo "✓ pronto: http://localhost:5190"
-    open http://localhost:5190 2>/dev/null || true
+    if [ "${POV_NO_OPEN:-0}" != "1" ]; then open http://localhost:5190 2>/dev/null || true; fi
     echo "  logs:  /tmp/garantia-backend.log  ·  /tmp/garantia-frontend.log"
     exit 0
   fi

@@ -310,33 +310,16 @@ export default function Portal({ state, setState }) {
         <div className="card-title" style={{ marginBottom: 12 }}>Portal do cliente — abrir chamado de garantia</div>
 
         <div style={{ marginBottom: 16 }}>
-          <div className="dim" style={{ marginBottom: 6 }}>
-            Cenarios prontos (fotos reais do catalogo MadeiraMadeira) — um clique carrega tudo:
-          </div>
-          <div className="row">
-            {CENARIOS.filter((c) => !c.negativo && !c.oculto).map((cen) => (
-              <Button key={cen.label} darkMode size="small"
-                variant={cenarioAtivo?.label === cen.label ? 'primary' : 'default'}
-                disabled={busy || !!carregandoCenario}
-                onClick={() => aplicarCenario(cen)}>
-                {carregandoCenario === cen.label ? 'Carregando…' : cen.label}
-              </Button>
-            ))}
-          </div>
-
-          <div className="dim" style={{ marginTop: 12, marginBottom: 6 }}>
-            Cenários negativos — foto não bate com o produto (testa a verificação de identidade):
-          </div>
-          <div className="row">
-            {CENARIOS.filter((c) => c.negativo).map((cen) => (
-              <Button key={cen.label} darkMode size="small"
-                variant={cenarioAtivo?.label === cen.label ? 'danger' : 'dangerOutline'}
-                disabled={busy || !!carregandoCenario}
-                onClick={() => aplicarCenario(cen)}>
-                {carregandoCenario === cen.label ? 'Carregando…' : cen.label}
-              </Button>
-            ))}
-          </div>
+          <label className="demo-scenario-select">
+            <span>Cenário</span>
+            <select value={cenarioAtivo?.label || ''} disabled={busy || !!carregandoCenario} onChange={(event) => {
+              const scenario = CENARIOS.find((item) => item.label === event.target.value);
+              if (scenario) aplicarCenario(scenario);
+            }}>
+              <option value="">Escolha um caso pronto…</option>
+              {CENARIOS.filter((item) => !item.oculto).map((item) => <option key={item.label} value={item.label}>{item.label}</option>)}
+            </select>
+          </label>
           {cenarioAtivo?.negativo && (
             <Banner variant="warning" darkMode style={{ marginTop: 10 }}>
               <b>Resultado esperado:</b> {cenarioAtivo.explicacao}
@@ -419,11 +402,6 @@ export default function Portal({ state, setState }) {
               <div className="dim" style={{ marginBottom: 6 }}>Recuperação de precedentes:</div>
               <div className="row" style={{ alignItems: 'center' }}>
                 <Badge variant="green">$rankFusion — busca híbrida</Badge>
-                <span className="dim" style={{ fontSize: 12 }}>
-                  combina similaridade semântica (embedding Voyage) com relevância textual
-                  (Atlas Search) num único ranking — mais precisa que vector puro isolado,
-                  por isso é o modo padrão nesta implementação.
-                </span>
               </div>
             </div>
             <div style={{ marginTop: 12 }}>

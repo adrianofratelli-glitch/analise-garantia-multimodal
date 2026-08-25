@@ -1,6 +1,6 @@
 # Análise de Garantia com IA — MongoDB: modelo, índices e busca
 
-> Segundo dos três prompts. As quatro coleções, os três tipos de índice, os validadores e o critério de identidade que eu só acertei medindo.
+> Segunda parte do briefing. As quatro coleções, os três tipos de índice, os validadores e o critério de identidade que eu só acertei medindo.
 
 ---
 

@@ -617,3 +617,13 @@ footer.app-footer p {
     scroll-behavior: auto !important;
   }
 }
+
+.stage-heading {
+  display: flex; align-items: end; justify-content: space-between; gap: 20px;
+  margin: 4px 0 24px; padding-bottom: 18px; border-bottom: 1px solid var(--border-subtle);
+}
+.stage-heading .page-title { margin: 0; font-size: clamp(1.8rem, 3vw, 2.7rem); }
+.stage-heading p { margin: 0; color: var(--text-muted); font: 0.72rem var(--font-mono); }
+.demo-scenario-select { display: grid; gap: 6px; max-width: 540px; color: var(--text-muted); font-size: .75rem; }
+.demo-scenario-select select { min-height: 42px; padding: 0 12px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-primary); color: var(--text-pri); }
+@media (max-width: 720px) { .stage-heading { align-items: flex-start; flex-direction: column; } }

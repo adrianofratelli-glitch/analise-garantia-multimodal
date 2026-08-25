@@ -4,7 +4,7 @@ import { api } from './api.js';
 const Portal = lazy(() => import('./tabs/Portal.jsx'));
 const Revisao = lazy(() => import('./tabs/Revisao.jsx'));
 
-const TABS = ['01 · Portal de Garantia', '02 · Revisão Humana'];
+const TABS = ['Abrir chamado', 'Revisar'];
 
 export default function App() {
   const [selected, setSelected] = useState(0);
@@ -52,7 +52,8 @@ export default function App() {
   const counts = health?.counts ?? {};
 
   return (
-    <>
+    <div data-pov-shell>
+      <a className="pov-skip-link" href="#conteudo-principal">Pular para o conteúdo</a>
       <nav className="top-nav">
         <div className="nav-inner">
           <span className="nav-logo">
@@ -63,6 +64,7 @@ export default function App() {
               <button
                 key={name}
                 className={`nav-pill ${i === selected ? 'active' : ''}`}
+                aria-current={i === selected ? 'page' : undefined}
                 onClick={() => selectTab(i)}
               >
                 {name}
@@ -76,43 +78,11 @@ export default function App() {
         </div>
       </nav>
 
-      <main className="content">
-        <div className="hero-kicker">PoV · Triagem Multimodal de Garantia</div>
-        <h1 className="page-title">
-          Defeito vira <span>precedente</span> recuperável
-        </h1>
-        <p className="page-subtitle">
-          Foto + checklist + descrição viram um embedding multimodal e entram numa
-          busca vetorial (Atlas <code>$vectorSearch</code> + <code>$rankFusion</code>) sobre
-          chamados já resolvidos — o modelo documental guarda cada precedente exatamente
-          como uma decisão futura vai precisar reencontrá-lo. A triagem sugere um veredito,
-          sempre sujeito a revisão humana. Cada confirmação realimenta a base (flywheel).
-        </p>
-
-        <div className="stat-bar">
-          <div className="stat-item">
-            <div className="stat-val accent">{counts.total ?? '—'}</div>
-            <div className="stat-label">chamados</div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-val accent">{counts.resolvido ?? '—'}</div>
-            <div className="stat-label">precedentes resolvidos</div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-val accent">{counts.em_analise ?? '—'}</div>
-            <div className="stat-label">em análise</div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-val">1024</div>
-            <div className="stat-label">dim · voyage-multimodal-3.5</div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-val" style={{ fontSize: '1rem', lineHeight: '1.9' }}>
-              $vectorSearch · $rankFusion
-            </div>
-            <div className="stat-label">Atlas · recuperação híbrida</div>
-          </div>
-        </div>
+      <main id="conteudo-principal" tabIndex={-1} className="content">
+        <header className="stage-heading">
+          <h1 className="page-title">Da foto ao <span>precedente</span></h1>
+          <p>{counts.resolvido ?? '—'} precedentes · {counts.em_analise ?? '—'} em análise</p>
+        </header>
 
         {panes.map((pane, i) => visited.has(i) && (
           <div key={i} style={{ display: i === selected ? 'block' : 'none' }}>
@@ -123,9 +93,6 @@ export default function App() {
         ))}
       </main>
 
-      <footer className="app-footer">
-        <p>MongoDB Atlas · analise_garantia.chamados — $vectorSearch + voyage-multimodal-3.5 (Caminho B)</p>
-      </footer>
-    </>
+    </div>
   );
 }

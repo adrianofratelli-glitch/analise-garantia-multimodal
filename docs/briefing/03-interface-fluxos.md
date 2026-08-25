@@ -1,8 +1,15 @@
 # Análise de Garantia com IA — interface, fluxos e roteiro
 
-> Terceiro dos três prompts. A demo tem duas pontas, e as duas precisam estar na tela ao mesmo tempo.
+> Terceira parte do briefing. A demo tem duas pontas, e as duas precisam estar na tela ao mesmo tempo.
 
 ---
+## Estado atual — modo palco
+
+O shell tem duas ações: **Abrir chamado** e **Revisar**. Cenários mutuamente
+exclusivos são escolhidos em um único seletor; o painel de métricas, o hero
+explicativo e o rodapé foram removidos. A tela preserva upload, análise real,
+veredito e chegada por Change Stream — a evidência da demo.
+
 ## Contrato visual do portfólio (v2)
 
 Esta UI participa da assinatura MongoDB Dark das PoVs. O arquivo
@@ -41,7 +48,9 @@ Portas fixas com `strictPort: true` (Vite em 5190), e o proxy encaminha **duas**
 
 O Portal também recebe um `goRevisar`, que troca de aba programaticamente. Depois de analisar um caso, o caminho natural é ir ver ele entrando na fila — sem obrigar ninguém a caçar a aba certa no meio da apresentação.
 
-O shell carrega ainda a barra de estatísticas (total de chamados, precedentes resolvidos, em análise, dimensão do embedding, os operadores usados), atualizada a cada 10s pelo `/api/health`. É o primeiro número que o cliente vê, e ele cresce durante a demo — que é exatamente o argumento do flywheel.
+O shell consulta `/api/health` para conexão e contagens essenciais, mas não
+mantém uma barra de estatísticas. Esses números só aparecem no contexto em que
+ajudam a interpretar o chamado ou a fila.
 
 ## As duas abas
 
