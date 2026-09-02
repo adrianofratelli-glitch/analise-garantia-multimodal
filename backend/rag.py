@@ -8,8 +8,12 @@
 Nada aqui cria índice nem modifica documentos.
 """
 
+import logging
+
 import config
 from db import SafeQueryError, catalogo_fotos, chamados, safe_query
+
+logger = logging.getLogger("mm_garantia.rag")
 
 NUM_CANDIDATES = 100
 LIMIT = 5
@@ -76,7 +80,7 @@ async def vector_search(query_vector: list[float], categoria: str) -> tuple[list
     return docs, funnel
 
 
-async def verificar_identidade(query_vector: list[float], sku: str) -> dict:
+async def verificar_identidade(query_vector: list[float], sku: str, categoria: str | None = None) -> dict:
     """$vectorSearch da foto do cliente contra TODAS as fotos de referência do
     catálogo (catalogo_fotos, sem filtro de sku) — responde "essa foto é do
     produto certo?", não "tem defeito?" (isso continua sendo papel do Claude
@@ -120,6 +124,26 @@ async def verificar_identidade(query_vector: list[float], sku: str) -> dict:
     eh_o_melhor_ou_empate = score_sku >= top_score - IDENTIDADE_MARGEM_EMPATE
     acima_do_piso = score_sku >= IDENTIDADE_THRESHOLD
     aprovado = eh_o_melhor_ou_empate and acima_do_piso
+    dentro_da_margem_de_empate = not eh_o_melhor_ou_empate and score_sku >= top_score - (2 * IDENTIDADE_MARGEM_EMPATE)
+
+    # Instrumentação mínima de deriva: IDENTIDADE_THRESHOLD/IDENTIDADE_MARGEM_EMPATE
+    # foram calibrados com uma única amostra anedotica (ver comentário acima). Sem
+    # isso não há visibilidade se o threshold está certo pra novas categorias/SKUs
+    # ao longo do tempo — não é um pipeline de validação, só o sinal cru em log
+    # para permitir análise offline futura (ex.: grep de "identidade_metrica" nos
+    # logs, ou ingestão numa collection dedicada se o volume justificar).
+    if not aprovado or dentro_da_margem_de_empate:
+        logger.warning(
+            "identidade_metrica abaixo_threshold=%s dentro_margem_empate=%s "
+            "score_sku=%.4f top_score=%.4f sku=%s top_sku=%s categoria=%s",
+            not aprovado,
+            dentro_da_margem_de_empate,
+            score_sku,
+            top_score,
+            sku,
+            top_sku,
+            categoria,
+        )
 
     return {
         "sku": sku,

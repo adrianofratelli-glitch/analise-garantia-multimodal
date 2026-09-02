@@ -7,6 +7,8 @@ Contrato de consistência: a MESMA função embeda no seed (input_type="document
 e no runtime (input_type="query"). Modelo/dimensão vêm do config (.env).
 """
 
+import os
+
 import voyageai
 
 import config
@@ -18,9 +20,16 @@ _client: voyageai.Client | None = None
 
 
 def get_client() -> voyageai.Client:
+    """Client com timeout explícito — sem isso uma degradação lenta (não uma
+    falha limpa) do provedor Voyage pode travar a thread do run_in_threadpool
+    por tempo indefinido. Mesmo padrão do client Anthropic em llm.py."""
     global _client
     if _client is None:
-        _client = voyageai.Client()  # lê VOYAGE_API_KEY do ambiente (config carregou o .env)
+        _client = voyageai.Client(
+            # lê VOYAGE_API_KEY do ambiente (config carregou o .env)
+            timeout=float(os.getenv("VOYAGE_TIMEOUT_SECONDS", "45")),
+            max_retries=int(os.getenv("VOYAGE_MAX_RETRIES", "2")),
+        )
     return _client
 
 

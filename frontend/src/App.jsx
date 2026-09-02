@@ -12,7 +12,13 @@ export default function App() {
 
   // estado elevado: trocar de aba não apaga o resultado da análise nem a revisão.
   const [portalState, setPortalState] = useState({ resultado: null, step: 0 });
-  const [revisaoState, setRevisaoState] = useState({ pendentes: [], selecionado: null });
+  const [revisaoState, setRevisaoState] = useState({
+    pendentes: [],
+    selecionado: null,
+    nextCursor: null,
+    hasMore: false,
+    totalPendentes: null,
+  });
 
   const [health, setHealth] = useState(null);
   const [healthError, setHealthError] = useState(false);

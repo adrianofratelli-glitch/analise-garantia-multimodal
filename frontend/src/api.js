@@ -57,7 +57,15 @@ export const api = {
     request('/api/lookup', { method: 'POST', body: JSON.stringify({ numero_pedido }) }),
   checklist: (categoria) => request(`/api/checklist/${categoria}`),
   analisar: (formData) => upload('/api/analisar', formData),
-  pendentes: () => request('/api/chamados/pendentes'),
+  // cursor: { created_at, id } de um next_cursor anterior — paginação real,
+  // sem isso casos com mais de 50 pendentes ficavam invisíveis para sempre.
+  pendentes: (cursor) => {
+    const params = new URLSearchParams();
+    if (cursor?.created_at) params.set('before_created_at', cursor.created_at);
+    if (cursor?.id) params.set('before_id', cursor.id);
+    const qs = params.toString();
+    return request(`/api/chamados/pendentes${qs ? `?${qs}` : ''}`);
+  },
   revisar: (numero_chamado, resolucao_final) =>
     request('/api/revisar', {
       method: 'POST',

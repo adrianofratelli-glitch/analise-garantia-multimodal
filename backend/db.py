@@ -10,6 +10,7 @@ import logging
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import (
     ConnectionFailure,
+    DuplicateKeyError,
     ExecutionTimeout,
     NetworkTimeout,
     OperationFailure,
@@ -88,6 +89,13 @@ async def safe_query(awaitable):
             "conexao",
             "Não foi possível alcançar o cluster Atlas. Verifique a MONGODB_URI e o IP Access List.",
         ) from e
+    except DuplicateKeyError as e:
+        # Subclasse de OperationFailure — precisa vir ANTES do except genérico
+        # abaixo, senão cai no branch "Operacao rejeitada" (mensagem genérica)
+        # e o chamador perde a chance de tratar a colisão especificamente
+        # (ex.: retry com nova chave, sem reprocessar trabalho caro já feito).
+        logger.warning("duplicate key on write: %s", str(e)[:200])
+        raise SafeQueryError("duplicado", "Chave duplicada ao gravar o documento.") from e
     except OperationFailure as e:
         logger.exception("operation failure")
         msg = str(e).lower()

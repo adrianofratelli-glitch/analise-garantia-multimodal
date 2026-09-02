@@ -16,25 +16,55 @@ const SUGESTAO = {
 };
 
 export default function Revisao({ state, setState, active = true }) {
-  const { pendentes, selecionado } = state;
+  const { pendentes, selecionado, nextCursor, hasMore, totalPendentes } = state;
   const [resolucao, setResolucao] = useState('');
   const [busy, setBusy] = useState(false);
   const [carregando, setCarregando] = useState(false);
+  const [carregandoMais, setCarregandoMais] = useState(false);
   const [error, setError] = useState(null);
   const [ok, setOk] = useState(null);
 
   const [live, setLive] = useState(false);
 
+  // Recarrega do início (usado por "Atualizar" e pelo Change Stream).
   const carregar = async () => {
     setCarregando(true);
     setError(null);
     try {
-      const lista = await api.pendentes();
-      setState((s) => ({ ...s, pendentes: lista }));
+      const resp = await api.pendentes();
+      setState((s) => ({
+        ...s,
+        pendentes: resp.chamados,
+        nextCursor: resp.next_cursor,
+        hasMore: resp.has_more,
+        totalPendentes: resp.total_pendentes,
+      }));
     } catch (e) {
       setError(e.message);
     } finally {
       setCarregando(false);
+    }
+  };
+
+  // Paginação por cursor (achado #3) — anexa a próxima página em vez de
+  // recarregar tudo, então casos além dos primeiros 50 continuam acessíveis.
+  const carregarMais = async () => {
+    if (!nextCursor) return;
+    setCarregandoMais(true);
+    setError(null);
+    try {
+      const resp = await api.pendentes(nextCursor);
+      setState((s) => ({
+        ...s,
+        pendentes: [...(s.pendentes ?? []), ...resp.chamados],
+        nextCursor: resp.next_cursor,
+        hasMore: resp.has_more,
+        totalPendentes: resp.total_pendentes,
+      }));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setCarregandoMais(false);
     }
   };
 
@@ -118,6 +148,11 @@ export default function Revisao({ state, setState, active = true }) {
               {live ? '● live — Change Streams' : '○ live indisponivel'}
             </Badge>
           </div>
+          {typeof totalPendentes === 'number' && (
+            <div className="dim" style={{ marginBottom: 8, fontSize: 12 }}>
+              Mostrando {(pendentes ?? []).length} de {totalPendentes} pendentes.
+            </div>
+          )}
           {(pendentes ?? []).length === 0 && (
             <p className="dim">Nenhum chamado pendente. Abra um no Portal de Garantia.</p>
           )}
@@ -136,6 +171,13 @@ export default function Revisao({ state, setState, active = true }) {
               </div>
             </button>
           ))}
+          {hasMore && (
+            <div style={{ marginTop: 10, textAlign: 'center' }}>
+              <Button darkMode size="small" onClick={carregarMais} disabled={carregandoMais}>
+                {carregandoMais ? 'Carregando…' : 'Carregar mais'}
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="stack">

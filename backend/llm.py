@@ -14,6 +14,7 @@ import logging
 import os
 import time
 
+import anthropic
 from anthropic import AsyncAnthropic
 
 import config
@@ -169,9 +170,32 @@ async def analisar_veredito(
             tool_choice={"type": "tool", "name": "emitir_veredito"},
             messages=[{"role": "user", "content": content}],
         )
-    except Exception:  # noqa: BLE001 — human-review fallback is the safe outcome
+    except (anthropic.APIError, TimeoutError, ConnectionError, OSError) as e:
+        # Falha esperada de rede/API do provedor (timeout, rate limit, 5xx) —
+        # transitória por natureza. Log em WARNING é suficiente: não é um bug
+        # nosso, é o provedor indisponível/lento.
         latency_ms = int((time.perf_counter() - start) * 1000)
-        logger.exception("Claude verdict unavailable; preserving case for human review")
+        logger.warning(
+            "Claude verdict unavailable (%s: %s); preserving case for human review",
+            type(e).__name__, str(e)[:200],
+        )
+        observability.metrics.bump("verdict_manual_review_fallback")
+        return _normalizar_veredito(
+            _FALLBACK,
+            meta={
+                "model": MODEL,
+                "mode": "manual_review_fallback",
+                "latency_ms": latency_ms,
+                "precedentes_usados": len(precedentes),
+            },
+        )
+    except Exception:
+        # Qualquer outra coisa (TypeError/KeyError/AttributeError internos, bug
+        # de programação) NÃO deve ser tratada como "provedor fora do ar" — ainda
+        # devolvemos o fallback seguro pro usuário (revisão humana sempre cobre),
+        # mas logamos CRITICAL com traceback completo pra diagnosticar de verdade.
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        logger.critical("Unexpected error calling Claude verdict — programming bug suspected", exc_info=True)
         observability.metrics.bump("verdict_manual_review_fallback")
         return _normalizar_veredito(
             _FALLBACK,

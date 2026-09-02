@@ -31,7 +31,10 @@ CHAMADOS_SCHEMA = {
         "properties": {
             "numero_chamado": {"bsonType": "string"},
             "categoria": {"bsonType": "string"},
-            "status": {"enum": ["em_analise", "resolvido"]},
+            # "veredito_pronto_aguardando_upload" — achado #2: estado intermediário
+            # gravado assim que o veredito (caro, já pago) sai do Claude, antes do
+            # upload da imagem terminar. Evita perder o veredito se o upload falhar.
+            "status": {"enum": ["em_analise", "resolvido", "veredito_pronto_aguardando_upload"]},
             "embedding": {
                 "bsonType": "array",
                 "minItems": config.EMBEDDING_DIM,
@@ -109,10 +112,14 @@ def _apply_validator(db, coll_name, schema):
 def _regular_indexes(db):
     db[config.CHAMADOS_COLL].create_index([("status", ASCENDING), ("created_at", DESCENDING)], name="status_created")
     db[config.CHAMADOS_COLL].create_index([("numero_chamado", ASCENDING)], name="numero_chamado", unique=True)
+    # Achado #1 — busca rápida pela janela de idempotência (hash + created_at
+    # recente). Não é unique: o mesmo hash pode voltar a aparecer legitimamente
+    # depois da janela (nova triagem do mesmo produto).
+    db[config.CHAMADOS_COLL].create_index([("idempotency_hash", ASCENDING), ("created_at", DESCENDING)], name="idempotency_hash")
     db[config.PEDIDOS_COLL].create_index([("numero_pedido", ASCENDING)], name="numero_pedido", unique=True)
     db[config.CATALOGO_COLL].create_index([("categoria", ASCENDING)], name="categoria", unique=True)
     db[config.CATALOGO_FOTOS_COLL].create_index([("sku", ASCENDING), ("foto_idx", ASCENDING)], name="sku_foto", unique=True)
-    print("✓ índices regulares criados (status_created, numero_chamado, numero_pedido, categoria, sku_foto)")
+    print("✓ índices regulares criados (status_created, numero_chamado, idempotency_hash, numero_pedido, categoria, sku_foto)")
 
 
 def _search_index(col, name, definition, kind):
