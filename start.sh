@@ -14,7 +14,22 @@ echo "▶ backend FastAPI :8100"
 # --workers 1 explícito: métricas em processo e o change stream SSE assumem
 # processo único; múltiplos workers dividiriam contadores e duplicariam streams.
 (cd backend && .venv/bin/uvicorn main:app --port 8100 --workers 1 &)
-sleep 2
+# Espera readiness real em vez de sleep fixo: a conexão com o Atlas leva mais de
+# 2s em rede fria, e o Vite subindo antes disso faz o proxy devolver 500
+# (ECONNREFUSED) para as primeiras chamadas da página -> banner "Erro HTTP 500".
+printf "  aguardando backend"
+for _ in $(seq 1 60); do
+  if curl -fsS http://127.0.0.1:8100/api/health >/dev/null 2>&1; then
+    echo " ok"
+    break
+  fi
+  printf "."
+  sleep 1
+done
+if ! curl -fsS http://127.0.0.1:8100/api/health >/dev/null 2>&1; then
+  echo ""
+  echo "⚠ backend não respondeu em 60s — seguindo mesmo assim; veja os logs do uvicorn."
+fi
 
 echo "▶ frontend Vite :5190"
 cd frontend

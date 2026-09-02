@@ -8,38 +8,46 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path, options = {}) {
+// O proxy do Vite devolve 500 quando o backend ainda não está escutando
+// (ECONNREFUSED no boot). Sem corpo {error}, isso vira um banner "Erro HTTP 500"
+// que não descreve nada. Tratamos 500/502/503/504 sem corpo de domínio como
+// indisponibilidade transitória e repetimos algumas vezes antes de desistir.
+const RETRY_STATUS = new Set([500, 502, 503, 504]);
+const RETRIES = 4;
+const RETRY_DELAY_MS = 700;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function send(path, init, attempt) {
   let res;
   try {
-    res = await fetch(path, {
-      headers: { 'Content-Type': 'application/json' },
-      ...options,
-    });
+    res = await fetch(path, init);
   } catch {
     throw new ApiError('rede', 'Backend não respondeu. O FastAPI está rodando na porta 8100?');
   }
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = body.error || {};
-    throw new ApiError(err.kind || 'erro', err.message || `Erro HTTP ${res.status}`);
+  if (res.ok) return body;
+
+  const err = body.error || {};
+  // Sem {error} no corpo a falha veio do proxy/infra, não do domínio.
+  if (!body.error && RETRY_STATUS.has(res.status) && attempt < RETRIES) {
+    await sleep(RETRY_DELAY_MS * (attempt + 1));
+    return send(path, init, attempt + 1);
   }
-  return body;
+  if (!body.error && RETRY_STATUS.has(res.status)) {
+    throw new ApiError('indisponivel', 'Backend ainda subindo ou indisponível na porta 8100. Recarregue em instantes.');
+  }
+  throw new ApiError(err.kind || 'erro', err.message || `Erro HTTP ${res.status}`);
+}
+
+async function request(path, options = {}) {
+  return send(path, { headers: { 'Content-Type': 'application/json' }, ...options }, 0);
 }
 
 async function upload(path, formData) {
-  // multipart — sem Content-Type manual (o browser põe o boundary)
-  let res;
-  try {
-    res = await fetch(path, { method: 'POST', body: formData });
-  } catch {
-    throw new ApiError('rede', 'Backend não respondeu. O FastAPI está rodando na porta 8100?');
-  }
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = body.error || {};
-    throw new ApiError(err.kind || 'erro', err.message || `Erro HTTP ${res.status}`);
-  }
-  return body;
+  // multipart — sem Content-Type manual (o browser põe o boundary).
+  // Sem retry: POST /api/analisar não é idempotente (insere um chamado).
+  return send(path, { method: 'POST', body: formData }, RETRIES);
 }
 
 export const api = {
