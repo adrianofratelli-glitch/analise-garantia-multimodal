@@ -8,6 +8,7 @@ import IdentidadeCard from '../components/IdentidadeCard.jsx';
 import JsonViewer from '../components/JsonViewer.jsx';
 import PipelineSteps from '../components/PipelineSteps.jsx';
 import VeredictoCard from '../components/VeredictoCard.jsx';
+import QueryDetails from '../components/QueryDetails.jsx';
 import { api } from '../api.js';
 
 const STEPS = ['Compor frase', 'Guardar foto (storage)', 'Embed multimodal (Voyage AI)', 'Verificar identidade do produto ($vectorSearch)', 'Busca de precedentes (Atlas $rankFusion)', 'Classificar causa provável', 'Gravar chamado (Atlas)'];
@@ -419,11 +420,25 @@ export default function Portal({ state, setState }) {
             <div className="card-title" style={{ marginBottom: 8 }}>Pipeline (Caminho B)</div>
             <PipelineSteps steps={steps} />
             {resultado && (
-              <div className="dim mono" style={{ marginTop: 10, fontSize: 12 }}>
-                chamado <b>{resultado.numero_chamado}</b> · status em_analise<br />
-                embedding: {resultado.embedding_model} ({resultado.embedding_dim}d)<br />
-                frase: {resultado.frase_analise}
-              </div>
+              <>
+                <div className="dim mono" style={{ marginTop: 10, fontSize: 12 }}>
+                  chamado <b>{resultado.numero_chamado}</b> · status em_analise<br />
+                  embedding: {resultado.embedding_model} ({resultado.embedding_dim}d)<br />
+                  frase: {resultado.frase_analise}
+                </div>
+                <QueryDetails
+                  operation={resultado.funnel?.query_details?.operation}
+                  namespace="chamados"
+                  query={resultado.funnel?.query_details?.pipeline}
+                  label="Ver pipeline de precedentes executado"
+                />
+                <QueryDetails
+                  operation={resultado.identidade?.query_details?.operation}
+                  namespace="catalogo_fotos"
+                  query={resultado.identidade?.query_details?.pipeline}
+                  label="Ver pipeline de identidade executado"
+                />
+              </>
             )}
           </div>
           <div className="stack">

@@ -15,6 +15,21 @@ NUM_CANDIDATES = 100
 LIMIT = 5
 _PROJECT = {"embedding": 0}
 
+
+def _display_pipeline(pipeline: list[dict]) -> list[dict]:
+    """Copy a pipeline for UI disclosure without shipping 1024-float vectors."""
+    def compact(value):
+        if isinstance(value, dict):
+            return {
+                key: (f"<{len(item)} floats omitidos>" if key == "queryVector" and isinstance(item, list) else compact(item))
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [compact(item) for item in value]
+        return value
+
+    return compact(pipeline)
+
 # Um threshold absoluto sozinho é frágil aqui: fotos de produto em estúdio
 # (fundo branco, mesma iluminação) fazem QUALQUER par de móveis pontuar alto
 # no embedding multimodal — a métrica captura "é foto de produto de mobília",
@@ -56,6 +71,7 @@ async def vector_search(query_vector: list[float], categoria: str) -> tuple[list
         "limit": LIMIT,
         "filtro": {"categoria": categoria, "status": "resolvido"},
         "retrieved": len(docs),
+        "query_details": {"operation": "aggregate", "pipeline": _display_pipeline(pipeline)},
     }
     return docs, funnel
 
@@ -91,7 +107,8 @@ async def verificar_identidade(query_vector: list[float], sku: str) -> dict:
     cursor = catalogo_fotos().aggregate(pipeline, maxTimeMS=config.MAX_TIME_MS)
     docs = await safe_query(cursor.to_list(length=30))
     if not docs:
-        return {"sku": sku, "score": None, "top_sku": None, "top_score": None, "fotos_comparadas": 0, "abaixo_threshold": False}
+        return {"sku": sku, "score": None, "top_sku": None, "top_score": None, "fotos_comparadas": 0, "abaixo_threshold": False,
+                "query_details": {"operation": "aggregate", "pipeline": _display_pipeline(pipeline)}}
 
     melhor_por_sku: dict[str, float] = {}
     for d in docs:
@@ -111,6 +128,7 @@ async def verificar_identidade(query_vector: list[float], sku: str) -> dict:
         "top_score": top_score,
         "fotos_comparadas": len(docs),
         "abaixo_threshold": not aprovado,
+        "query_details": {"operation": "aggregate", "pipeline": _display_pipeline(pipeline)},
     }
 
 
@@ -181,5 +199,6 @@ async def hybrid_search(query_vector: list[float], texto: str, categoria: str) -
         "num_candidates": NUM_CANDIDATES,
         "retrieved": len(docs),
         "pesos": {"vetorial": 0.7, "textual": 0.3},
+        "query_details": {"operation": "aggregate", "pipeline": _display_pipeline(pipeline)},
     }
     return docs, funnel
