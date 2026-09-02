@@ -1,6 +1,5 @@
 import pytest
 from fastapi import HTTPException
-
 from pydantic import ValidationError
 
 from main import LookupBody, _validar_entrada_analise
